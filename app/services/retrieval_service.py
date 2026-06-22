@@ -1,0 +1,80 @@
+from functools import cached_property
+
+from app.config import Settings
+from app.embedding.biomedical import BiomedicalEmbedder
+from app.embedding.faiss_index import DiseaseEmbeddingIndex
+from app.etl.processed_store import load_processed_knowledge_base
+from app.reranking.hybrid import HybridReranker
+from app.retrieval.ic_baseline import ICBaselineRanker
+from app.retrieval.knowledge import KnowledgeIndex
+from app.retrieval.note_matcher import ClinicalNoteMatcher, ExtractedPhenotype
+from app.schemas.retrieval import CandidateDisease
+
+
+class RetrievalService:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    @cached_property
+    def knowledge(self) -> KnowledgeIndex:
+        return KnowledgeIndex(load_processed_knowledge_base(self.settings.processed_dir))
+
+    @cached_property
+    def ic_ranker(self) -> ICBaselineRanker:
+        return ICBaselineRanker(self.knowledge)
+
+    @cached_property
+    def embedding_index(self) -> DiseaseEmbeddingIndex:
+        index = DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(self.settings.embedding_model))
+        index_dir = self.settings.processed_dir / "faiss"
+        if (index_dir / "disease.faiss").exists() and (index_dir / "disease_ids.json").exists():
+            index.load(index_dir)
+        return index
+
+    @cached_property
+    def reranker(self) -> HybridReranker:
+        return HybridReranker(
+            ic_weight=self.settings.ic_weight,
+            embedding_weight=self.settings.embedding_weight,
+            graph_weight=self.settings.graph_weight,
+        )
+
+    @cached_property
+    def note_matcher(self) -> ClinicalNoteMatcher:
+        return ClinicalNoteMatcher(self.knowledge)
+
+    def extract_hpo_terms(self, clinical_note: str, limit: int = 30) -> list[ExtractedPhenotype]:
+        return self.note_matcher.extract(clinical_note, limit=limit)
+
+    def rank_ic(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+        self._validate_hpo_terms(hpo_terms)
+        return self.ic_ranker.rank(hpo_terms, top_k)
+
+    def rank_embedding(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+        self._validate_hpo_terms(hpo_terms)
+        return self.embedding_index.search(hpo_terms, top_k)
+
+    def rank_hybrid(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+        self._validate_hpo_terms(hpo_terms)
+        ic_candidates = self.rank_ic(hpo_terms, max(top_k * 3, 30))
+        embedding_candidates = self.rank_embedding(hpo_terms, max(top_k * 3, 30))
+        graph_candidates = self._local_graph_overlap(hpo_terms, max(top_k * 3, 30))
+        return self.reranker.rerank(ic_candidates, embedding_candidates, graph_candidates, top_k)
+
+    def _local_graph_overlap(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+        candidates = self.ic_ranker.rank(hpo_terms, top_k)
+        query_size = len(set(hpo_terms)) or 1
+        for candidate in candidates:
+            graph_score = len(candidate.matched_phenotypes) / query_size
+            candidate.score = graph_score
+            candidate.score_components.graph_score = graph_score
+            candidate.graph_paths = [
+                f"Patient -> {phenotype.hpo_id} -> {candidate.disease_id}"
+                for phenotype in candidate.matched_phenotypes
+            ]
+        return candidates
+
+    def _validate_hpo_terms(self, hpo_terms: list[str]) -> None:
+        unknown = [hpo_id for hpo_id in hpo_terms if hpo_id not in self.knowledge.phenotypes]
+        if unknown:
+            raise ValueError(f"unknown HPO term(s): {', '.join(unknown)}")

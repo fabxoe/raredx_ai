@@ -78,3 +78,9 @@ Thumbs.db
 
 # Keep data directory structure but ignore contents if needed
 # If you want to commit specific files under data/, you can use `git add -f` or add exclusions here.
+data/raw/*
+data/processed/*
+data/external/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep

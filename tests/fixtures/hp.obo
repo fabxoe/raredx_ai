@@ -1,0 +1,25 @@
+format-version: 1.2
+
+[Term]
+id: HP:0001250
+name: Seizure
+def: "A seizure is an intermittent abnormality of nervous system physiology." [HPO:probinson]
+synonym: "Epileptic seizure" EXACT []
+is_a: HP:0000707 ! Abnormality of the nervous system
+
+[Term]
+id: HP:0001263
+name: Global developmental delay
+def: "A delay in the achievement of motor or mental milestones." [HPO:probinson]
+is_a: HP:0012759 ! Neurodevelopmental abnormality
+
+[Term]
+id: HP:0000252
+name: Microcephaly
+def: "Head circumference below the normal range." [HPO:probinson]
+is_a: HP:0007364 ! Aplasia/Hypoplasia involving the central nervous system
+
+[Term]
+id: HP:9999999
+name: Obsolete test term
+is_obsolete: true
