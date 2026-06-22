@@ -146,7 +146,7 @@ uv run scripts/load_neo4j.py
 9. FastAPI 실행
 
 ```bash
-uvicorn app.main:app --reload --port 8010
+uv run uvicorn app.main:app --reload --port 8010
 ```
 
 API 문서:
@@ -322,7 +322,7 @@ zsh: command not found: uvicorn
 가상환경 밖에서 `uvicorn`을 직접 실행한 것이다.
 
 ```bash
-uvicorn app.main:app --reload --port 8010
+uv run uvicorn app.main:app --reload --port 8010
 ```
 
 ## Codex로 이어서 작업할 때
