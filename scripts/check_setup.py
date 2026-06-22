@@ -55,12 +55,11 @@ def check_files() -> None:
     print("  cp .env.example .env")
     print("  uv sync")
     print("  docker compose up -d neo4j")
-    print("  uv run python scripts/download_hpo.py")
-    print("  uv run python scripts/build_processed.py")
-    print("  uv run python scripts/build_faiss.py")
-    print("  uv run python scripts/load_neo4j.py")
+    print("  uv run scripts/download_hpo.py")
+    print("  uv run scripts/build_processed.py")
+    print("  uv run scripts/build_faiss.py")
+    print("  uv run scripts/load_neo4j.py")
 
 
 if __name__ == "__main__":
     main()
-

@@ -111,7 +111,7 @@ uv run pytest -q
 ```
 
 ```bash
-uv run python scripts/build_processed.py
+uv run scripts/build_processed.py
 # 19810 phenotypes
 # 283976 disease-phenotype annotations
 # 331738 gene-phenotype annotations
@@ -123,7 +123,7 @@ uv run scripts/build_faiss.py
 ```
 
 ```bash
-uv run python scripts/load_neo4j.py
+uv run scripts/load_neo4j.py
 # Neo4j knowledge graph load completed
 ```
 
