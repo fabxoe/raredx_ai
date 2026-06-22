@@ -38,7 +38,7 @@ Bolt port `7687`은 일반 브라우저용 HTTP 서비스가 아니므로 Cloudf
 
 ```bash
 docker compose up -d neo4j
-uvicorn app.main:app --reload --port 8010
+uv run uvicorn app.main:app --reload --port 8010
 ```
 
 Neo4j local 접속:
@@ -271,4 +271,3 @@ MATCH (d:Disease)-[r:HAS_PHENOTYPE]->(p:Phenotype {id: "HP:0001250"})
 RETURN d, r, p
 LIMIT 50;
 ```
-

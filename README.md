@@ -57,6 +57,28 @@ brew install --cask docker
 open -a Docker
 ```
 
+설치 확인:
+
+```bash
+uv --version
+docker --version
+docker info
+```
+
+`docker info`에서 Docker daemon 연결 오류가 나면 Docker Desktop이 아직 실행되지 않은 것이다.
+
+```bash
+open -a Docker
+```
+
+macOS에 `python` 또는 `uvicorn` 명령이 없을 수 있다. 이 프로젝트에서는 팀원 환경 차이를 줄이기 위해 아래처럼 항상 `uv run`을 붙여 실행하는 것을 권장한다.
+
+```bash
+uv run python ...
+uv run uvicorn ...
+uv run pytest ...
+```
+
 ## 로컬 실행 순서
 
 1. 저장소 clone
@@ -93,13 +115,13 @@ docker compose ps
 5. 공식 HPO 데이터 다운로드
 
 ```bash
-python scripts/download_hpo.py
+uv run python scripts/download_hpo.py
 ```
 
 6. processed knowledge base 생성
 
 ```bash
-python scripts/build_processed.py
+uv run python scripts/build_processed.py
 ```
 
 예상 출력:
@@ -119,13 +141,13 @@ uv run scripts/build_faiss.py
 8. Neo4j graph 적재
 
 ```bash
-python scripts/load_neo4j.py
+uv run python scripts/load_neo4j.py
 ```
 
 9. FastAPI 실행
 
 ```bash
-uvicorn app.main:app --reload --port 8010
+uv run uvicorn app.main:app --reload --port 8010
 ```
 
 API 문서:
@@ -217,7 +239,7 @@ Neo4j Browser에서 Cypher query로 graph를 확인할 수 있다.
 ## 테스트
 
 ```bash
-pytest -q
+uv run pytest -q
 ```
 
 현재 기준:
@@ -240,6 +262,69 @@ model cache
 ```
 
 즉 GitHub에는 코드, 스크립트, 설정, 문서, 테스트 fixture만 올린다.
+
+## 설치 상태 점검
+
+다른 노트북에서 setup이 막히면 먼저 아래 명령으로 누락된 항목을 확인한다.
+
+```bash
+uv run python scripts/check_setup.py
+```
+
+자주 발생하는 문제:
+
+```text
+zsh: command not found: docker
+```
+
+Docker Desktop이 설치되지 않았거나 PATH에 없는 상태다.
+
+```bash
+brew install --cask docker
+open -a Docker
+```
+
+```text
+Cannot connect to the Docker daemon
+```
+
+Docker Desktop이 실행 중이 아니다.
+
+```bash
+open -a Docker
+```
+
+```text
+zsh: command not found: python
+```
+
+macOS에서 `python` alias가 없는 상태다. 이 프로젝트 명령은 `uv run python`으로 실행한다.
+
+```bash
+uv run python scripts/download_hpo.py
+```
+
+```text
+FileNotFoundError: data/processed/phenotypes.json
+```
+
+processed 데이터가 아직 생성되지 않은 상태다. 아래 순서를 먼저 실행한다.
+
+```bash
+uv run python scripts/download_hpo.py
+uv run python scripts/build_processed.py
+uv run python scripts/build_faiss.py
+```
+
+```text
+zsh: command not found: uvicorn
+```
+
+가상환경 밖에서 `uvicorn`을 직접 실행한 것이다.
+
+```bash
+uv run uvicorn app.main:app --reload --port 8010
+```
 
 ## Codex로 이어서 작업할 때
 

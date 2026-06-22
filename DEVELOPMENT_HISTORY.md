@@ -64,6 +64,9 @@ GNN은 의도적으로 뒤로 미룬다. 먼저 IC scoring, embedding retrieval,
 - 남는 맥북과 Cloudflare Tunnel을 이용해 FastAPI와 Neo4j Browser를 팀원에게 공유하는 호스팅 문서를 추가했다.
   - `docs/cloudflare_tunnel_hosting.md`
 - 팀원이 다른 노트북에서 clone 후 재현할 수 있도록 `README.md`를 추가했다.
+- 팀원 setup 오류를 줄이기 위해 README 실행 명령을 `uv run` 기준으로 보강했다.
+- 설치 상태 점검 스크립트를 추가했다.
+  - `scripts/check_setup.py`
 - 테스트를 추가했다.
   - HPO loader
   - disease-phenotype negative annotation filtering
@@ -103,12 +106,12 @@ GNN은 의도적으로 뒤로 미룬다. 먼저 IC scoring, embedding retrieval,
 ### 검증한 명령어
 
 ```bash
-pytest -q
+uv run pytest -q
 # 9 passed
 ```
 
 ```bash
-python scripts/build_processed.py
+uv run python scripts/build_processed.py
 # 19810 phenotypes
 # 283976 disease-phenotype annotations
 # 331738 gene-phenotype annotations
@@ -120,7 +123,7 @@ uv run scripts/build_faiss.py
 ```
 
 ```bash
-python scripts/load_neo4j.py
+uv run python scripts/load_neo4j.py
 # Neo4j knowledge graph load completed
 ```
 
