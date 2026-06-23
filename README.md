@@ -50,6 +50,18 @@ macOS에서 uv가 없으면:
 brew install uv
 ```
 
+Homebrew를 쓰고 싶지 않다면 uv 공식 설치 스크립트를 사용한다.
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+설치 후 새 터미널을 열거나 shell 설정을 다시 로드한 뒤 확인한다.
+
+```bash
+uv --version
+```
+
 Docker Desktop이 없으면:
 
 ```bash

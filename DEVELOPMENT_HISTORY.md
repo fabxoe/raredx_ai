@@ -65,6 +65,7 @@ GNN은 의도적으로 뒤로 미룬다. 먼저 IC scoring, embedding retrieval,
   - `docs/cloudflare_tunnel_hosting.md`
 - 팀원이 다른 노트북에서 clone 후 재현할 수 있도록 `README.md`를 추가했다.
 - 팀원 setup 오류를 줄이기 위해 README 실행 명령을 `uv run` 기준으로 보강했다.
+- Homebrew를 쓰지 않는 팀원을 위해 uv 공식 설치 스크립트 안내를 README에 추가했다.
 - 설치 상태 점검 스크립트를 추가했다.
   - `scripts/check_setup.py`
 - 테스트를 추가했다.
