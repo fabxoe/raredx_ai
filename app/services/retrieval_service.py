@@ -46,6 +46,21 @@ class RetrievalService:
     def extract_hpo_terms(self, clinical_note: str, limit: int = 30) -> list[ExtractedPhenotype]:
         return self.note_matcher.extract(clinical_note, limit=limit)
 
+    def search_phenotypes(self, query: str, limit: int = 10) -> list[tuple[str, str]]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return []
+        exact: list[tuple[str, str]] = []
+        partial: list[tuple[str, str]] = []
+        for hpo_id, term in self.knowledge.phenotypes.items():
+            name = term.name.lower()
+            if normalized == hpo_id.lower() or normalized == name:
+                exact.append((hpo_id, term.name))
+            elif normalized in hpo_id.lower() or normalized in name:
+                partial.append((hpo_id, term.name))
+        partial.sort(key=lambda item: (not item[1].lower().startswith(normalized), len(item[1]), item[1]))
+        return (exact + partial)[:limit]
+
     def rank_ic(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
         self._validate_hpo_terms(hpo_terms)
         return self.ic_ranker.rank(hpo_terms, top_k)

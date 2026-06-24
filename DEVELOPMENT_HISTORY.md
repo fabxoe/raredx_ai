@@ -1,5 +1,30 @@
 # RARE_DX_AI 개발 히스토리
 
+## 2026-06-24
+
+### 고객용 프론트엔드 추가
+
+- FastAPI root(`/`)에서 고객용 작업 화면을 제공하도록 구현했다.
+- HPO term 검색과 선택 기능을 추가했다.
+- Clinical note 기반 HPO 추출 및 ranking 입력을 연결했다.
+- IC, SapBERT+FAISS embedding, hybrid ranking 선택 기능을 추가했다.
+- Candidate disease ranking table과 score component 비교를 추가했다.
+- Neo4j를 FastAPI 뒤에 숨기고 고객에게 node/edge JSON만 반환하는 subgraph API를 추가했다.
+  - `POST /api/graph/subgraph`
+- Cytoscape.js 기반 Disease-Gene-Phenotype graph 시각화를 추가했다.
+- Disease row/node 선택 시 evidence와 연결 node를 강조하도록 구현했다.
+- Neo4j 연결 실패 시에도 disease ranking 결과는 유지하도록 처리했다.
+- 데스크톱 1440x900과 모바일 500px viewport에서 렌더링을 확인했다.
+- 전체 테스트 결과: `11 passed`
+
+고객 공개 주소:
+
+```text
+https://api.cromtind.uk/
+```
+
+관리자용 Neo4j Browser는 고객 UI와 분리한다.
+
 ## 2026-06-22
 
 ### 현재 개발 초점

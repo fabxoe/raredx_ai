@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.graph import router as graph_router
 from app.api.retrieval import router as retrieval_router
@@ -12,8 +16,14 @@ def create_app() -> FastAPI:
     )
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["retrieval"])
     app.include_router(graph_router, prefix="/api/graph", tags=["graph"])
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def frontend() -> FileResponse:
+        return FileResponse(static_dir / "index.html")
+
     return app
 
 
 app = create_app()
-

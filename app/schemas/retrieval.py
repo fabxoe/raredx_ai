@@ -67,3 +67,29 @@ class RetrievalResponse(BaseModel):
 class ClinicalNoteRetrievalResponse(RetrievalResponse):
     clinical_note: str
     extracted_phenotypes: list[ExtractedPhenotypeMatch]
+
+
+class PhenotypeSearchItem(BaseModel):
+    hpo_id: str
+    name: str
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    type: str
+    properties: dict[str, str | float | int | None] = Field(default_factory=dict)
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    type: str
+    properties: dict[str, str | float | int | None] = Field(default_factory=dict)
+
+
+class GraphSubgraphResponse(BaseModel):
+    query_hpo_terms: list[str]
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

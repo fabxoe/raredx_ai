@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RARE_DX_AI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">RX</div>
+      <div>
+        <h1>RARE_DX_AI</h1>
+        <p>Rare disease candidate prioritization</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span class="status-badge"><span class="status-dot"></span>Research prototype</span>
+      <a class="icon-link" href="/docs" target="_blank" title="API 문서" aria-label="API 문서">
+        <i data-lucide="braces"></i>
+      </a>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="query-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">Patient profile</span>
+          <h2>Phenotype query</h2>
+        </div>
+        <button id="reset-query" class="icon-button" title="입력 초기화" aria-label="입력 초기화">
+          <i data-lucide="rotate-ccw"></i>
+        </button>
+      </div>
+
+      <div class="segmented-control" id="input-mode" role="tablist" aria-label="입력 방식">
+        <button class="active" data-mode="hpo" role="tab">HPO terms</button>
+        <button data-mode="note" role="tab">Clinical note</button>
+      </div>
+
+      <section id="hpo-input-section" class="input-section">
+        <label for="hpo-search">HPO term</label>
+        <div class="search-field">
+          <i data-lucide="search"></i>
+          <input id="hpo-search" autocomplete="off" placeholder="HP:0001250 or Seizure">
+        </div>
+        <div id="hpo-suggestions" class="suggestions" hidden></div>
+        <div id="selected-terms" class="selected-terms" aria-live="polite"></div>
+      </section>
+
+      <section id="note-input-section" class="input-section" hidden>
+        <label for="clinical-note">Clinical note</label>
+        <textarea id="clinical-note" rows="8">The patient has seizure, global developmental delay, and microcephaly.</textarea>
+      </section>
+
+      <div class="field-group">
+        <label>Ranking method</label>
+        <div class="segmented-control compact" id="ranking-method">
+          <button class="active" data-method="ic">IC</button>
+          <button data-method="embedding">Embedding</button>
+          <button data-method="hybrid">Hybrid</button>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label for="top-k">Candidates</label>
+          <select id="top-k">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+          </select>
+        </div>
+        <div class="field-group summary-count">
+          <label>Phenotypes</label>
+          <strong id="phenotype-count">0</strong>
+        </div>
+      </div>
+
+      <button id="run-analysis" class="primary-button">
+        <i data-lucide="play"></i>
+        <span>Run analysis</span>
+      </button>
+
+      <div id="query-error" class="error-message" hidden></div>
+
+      <section class="inspector" id="node-inspector">
+        <span class="eyebrow">Selection</span>
+        <h3 id="inspector-label">Patient profile</h3>
+        <dl id="inspector-properties">
+          <div><dt>Type</dt><dd>Patient</dd></div>
+        </dl>
+      </section>
+    </aside>
+
+    <section class="results-area">
+      <div class="results-toolbar">
+        <div>
+          <span class="eyebrow">Evidence workspace</span>
+          <h2>Candidate diseases</h2>
+        </div>
+        <div class="run-meta">
+          <span id="result-count">0 candidates</span>
+          <span class="divider"></span>
+          <span id="latency">Ready</span>
+        </div>
+      </div>
+
+      <div class="results-grid">
+        <section class="ranking-panel" aria-label="질병 후보 순위">
+          <div class="section-title">
+            <h3>Ranking</h3>
+            <span id="method-label">IC baseline</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Disease</th>
+                  <th>Gene</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="ranking-body">
+                <tr class="empty-row"><td colspan="4">No results</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="evidence-detail" id="evidence-detail">
+            <div class="evidence-header">
+              <h3>Evidence</h3>
+              <span id="selected-disease-id">—</span>
+            </div>
+            <div class="score-bars" id="score-bars"></div>
+            <div class="evidence-columns">
+              <div>
+                <span class="list-label">Matched phenotypes</span>
+                <ul id="matched-list"><li>—</li></ul>
+              </div>
+              <div>
+                <span class="list-label">Associated genes</span>
+                <ul id="gene-list"><li>—</li></ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="graph-panel" aria-label="Disease-Gene-Phenotype 그래프">
+          <div class="section-title graph-title">
+            <div>
+              <h3>Knowledge graph</h3>
+              <span id="graph-count">0 nodes · 0 edges</span>
+            </div>
+            <div class="graph-actions">
+              <button id="fit-graph" class="icon-button" title="그래프 맞춤" aria-label="그래프 맞춤">
+                <i data-lucide="maximize"></i>
+              </button>
+              <button id="reset-graph" class="icon-button" title="레이아웃 재정렬" aria-label="레이아웃 재정렬">
+                <i data-lucide="network"></i>
+              </button>
+            </div>
+          </div>
+          <div id="graph" role="img" aria-label="질병, 유전자, 표현형 관계 그래프"></div>
+          <div class="graph-legend">
+            <span><i class="legend-dot patient"></i>Patient</span>
+            <span><i class="legend-dot phenotype"></i>Phenotype</span>
+            <span><i class="legend-dot disease"></i>Disease</span>
+            <span><i class="legend-dot gene"></i>Gene</span>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

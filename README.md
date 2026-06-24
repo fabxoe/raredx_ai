@@ -15,6 +15,7 @@ RARE_DX_AI는 HPO phenotype 정보를 기반으로 rare disease candidate를 우
 - Hybrid re-ranking
 - Dictionary 기반 clinical note to HPO matcher
 - FastAPI retrieval API
+- 고객용 disease ranking 및 knowledge graph 프론트엔드
 - Neo4j Browser 기반 graph 시각화
 
 아직 구현하지 않은 것:
@@ -167,6 +168,20 @@ API 문서:
 http://127.0.0.1:8010/docs
 ```
 
+고객용 프론트엔드:
+
+```text
+http://127.0.0.1:8010/
+```
+
+Cloudflare 배포 환경:
+
+```text
+https://api.cromtind.uk/
+```
+
+프론트엔드는 HPO/clinical note 입력, IC·embedding·hybrid ranking, candidate evidence, Disease-Gene-Phenotype graph를 제공한다. Neo4j Bolt와 계정 정보는 FastAPI 내부에서만 사용하며 고객에게 노출하지 않는다.
+
 Neo4j Browser:
 
 ```text
@@ -221,6 +236,14 @@ curl -X POST http://127.0.0.1:8010/api/retrieval/note/ic \
 
 ```bash
 curl -X POST http://127.0.0.1:8010/api/graph/evidence \
+  -H "Content-Type: application/json" \
+  -d '{"hpo_terms":["HP:0001250","HP:0001263"],"top_k":5}'
+```
+
+### Graph subgraph
+
+```bash
+curl -X POST http://127.0.0.1:8010/api/graph/subgraph \
   -H "Content-Type: application/json" \
   -d '{"hpo_terms":["HP:0001250","HP:0001263"],"top_k":5}'
 ```
