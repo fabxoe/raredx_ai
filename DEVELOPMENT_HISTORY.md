@@ -213,18 +213,35 @@ Clinical note 기반 retrieval:
    - direct overlap과 ancestor-expanded overlap을 비교한다.
    - HPO term별 IC 기여도를 score explanation에 포함한다.
 
-3. Graph retrieval 개선
+3. 고객용 Graph Explorer 구현
+   - `Customer Workspace`에서 HPO, Disease, Gene를 검색하고 연결 관계를 탐색할 수 있게 한다.
+   - 시작 노드, 관계 종류, 탐색 깊이, 결과 개수를 안전한 UI control로 제공한다.
+   - 결과를 Graph/Table view로 제공하고 선택한 노드의 evidence를 별도 inspector에 표시한다.
+   - 자주 사용하는 탐색 조건은 query preset으로 제공한다.
+   - 고객에게 raw Cypher, Bolt 주소, Neo4j 계정 정보를 노출하지 않는다.
+   - 서버에서 검증된 query template만 실행해 과도한 graph traversal을 제한한다.
+
+4. 관리자용 Cypher Lab 구현
+   - `Admin Workspace`로 분리하고 Cloudflare Access 인증을 통과한 관리자와 연구자만 접근하게 한다.
+   - Cypher editor에 Run/Stop, 실행 시간, query history, query preset을 제공한다.
+   - 결과는 Graph/Table/JSON view로 전환할 수 있게 한다.
+   - 기본 실행 권한은 read-only로 제한한다.
+   - write query는 별도 권한, 경고, 명시적 확인 절차를 거치게 한다.
+   - query timeout, 최대 반환 row 수, audit log를 적용한다.
+   - Neo4j Browser는 개발 및 장애 대응용 도구로 유지하고 고객 화면과 분리한다.
+
+5. Graph retrieval 개선
    - `disease_id` 기준 disease-specific evidence endpoint를 추가한다.
    - gene path를 포함한 graph path를 출력한다.
      - `Patient -> Phenotype -> Disease -> Gene`
    - graph coverage metric을 추가한다.
 
-4. Embedding retrieval 개선
+6. Embedding retrieval 개선
    - SapBERT 외 다른 biomedical encoder로 교체 가능한 설정을 정리한다.
    - HPO embedding cache artifact를 추가한다.
    - 작은 curated example 기준 Top-k, MRR 평가 스크립트를 추가한다.
 
-5. Re-ranking 개선
+7. Re-ranking 개선
    - IC, embedding, graph score scale을 보정한다.
    - request 또는 환경변수에서 weight를 조정할 수 있게 한다.
    - ablation output을 추가한다.
@@ -233,12 +250,12 @@ Clinical note 기반 retrieval:
      - graph only
      - hybrid
 
-6. Biomedical NER 또는 LLM 기반 HPO mapper는 이후 단계에서 추가한다.
+8. Biomedical NER 또는 LLM 기반 HPO mapper는 이후 단계에서 추가한다.
    - Retrieval baseline과 분리해서 구현한다.
    - Dictionary matcher와 비교한다.
    - LLM extraction 결과를 ground truth처럼 취급하지 않는다.
 
-7. GNN 실험은 baseline 평가 이후 시작한다.
+9. GNN 실험은 baseline 평가 이후 시작한다.
    - train/evaluation split을 먼저 정의한다.
    - IC/embedding/graph baseline ranking을 비교군으로 사용한다.
    - clinical diagnosis처럼 보이는 표현은 사용하지 않는다.
