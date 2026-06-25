@@ -1,5 +1,44 @@
 # RARE_DX_AI 개발 히스토리
 
+## 2026-06-26
+
+### 두 종류의 Doc2HPO/HPO Mapper 계열 비교
+
+Doc2HPO 계열 도구는 현재 disease ranking baseline과 같은 층이 아니라, clinical note를 HPO term으로 변환하는 upstream mapper baseline으로 분리해서 본다.
+
+비교 대상:
+
+1. `phenotype_embedding`
+   - HPO ontology DAG 위에서 Node2Vec 또는 Node2Vec+ 기반 graph embedding을 학습한다.
+   - clinical note에서 얻은 phenotype frequency를 HPO node의 propagated probability로 반영한다.
+   - edge weight는 HPO `IS_A` graph에서 random walk 확률을 조정하기 위한 값이다.
+   - 우리 프로젝트에서는 `SapBERT disease embedding + FAISS`와 별도의 `HPO graph embedding + FAISS` baseline 후보로 본다.
+
+2. `UoS-HGIG/HPO-Mapper`
+   - clinical finding text를 HPO term 후보로 매핑하는 도구다.
+   - embedding similarity 기반 HPO retrieval을 사용하고, 설정에 따라 LLM quality control 또는 term selection을 붙일 수 있다.
+   - 우리 프로젝트에서는 dictionary matcher의 다음 비교군인 `clinical note-to-HPO mapping baseline`으로 본다.
+
+정리:
+
+- Baseline 1: IC-weighted HPO overlap
+- Baseline 2: SapBERT disease embedding + FAISS
+- Baseline 3: HPO graph embedding 또는 Node2Vec phenotype embedding + FAISS
+- Baseline 4: Clinical note-to-HPO mapper
+  - Dictionary matcher
+  - HPO Mapper/Doc2HPO-style embedding mapper
+  - LLM-assisted HPO mapper
+
+평가 기준은 분리한다.
+
+- Baseline 1~3은 gold HPO term이 주어졌을 때 disease candidate ranking을 평가한다.
+- Baseline 4는 clinical note에서 HPO term을 얼마나 잘 추출하고 정규화하는지 평가한다.
+- Baseline 4의 출력 HPO를 ranking pipeline에 넣어 end-to-end 성능도 별도로 확인한다.
+
+현재 판단:
+
+HPO Mapper/Doc2HPO 계열은 v1 ranking baseline을 대체하지 않는다. 대신 dictionary matcher의 한계를 보완하는 HPO normalization/mapping 단계로 추가하는 것이 적절하다. 이후 `clinical note -> HPO terms -> disease ranking -> graph evidence` 흐름에서 mapper별 성능 차이를 비교한다.
+
 ## 2026-06-24
 
 ### 고객용 프론트엔드 추가
