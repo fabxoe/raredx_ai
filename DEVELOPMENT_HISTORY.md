@@ -10,6 +10,20 @@ Doc2HPO 계열 도구는 현재 disease ranking baseline과 같은 층이 아니
 
 - `docs/doc2hpo_repository_comparison.md`
 
+현재 RARE_DX_AI 서비스에 적용된 알고리즘을 같은 비교표에 추가했다.
+
+- IC direct overlap
+- SapBERT disease embedding + FAISS
+- Neo4j graph evidence
+- dictionary-based clinical note matcher
+- linear hybrid re-ranking
+
+HPO-Mapper와 현재 RARE_DX_AI 서비스의 아키텍처 관계를 문서에 추가했다.
+
+- HPO-Mapper는 `SapBERT disease embedding + FAISS`의 대체재가 아니다.
+- HPO-Mapper는 dictionary matcher를 대체하거나 보완하는 `clinical note -> HPO terms` 모듈이다.
+- SapBERT/FAISS의 동등한 대체 후보는 `phenotype_embedding` 같은 HPO graph embedding + FAISS 방식이다.
+
 비교 대상:
 
 1. `phenotype_embedding`
