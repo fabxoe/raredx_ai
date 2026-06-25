@@ -6,6 +6,10 @@
 
 Doc2HPO 계열 도구는 현재 disease ranking baseline과 같은 층이 아니라, clinical note를 HPO term으로 변환하는 upstream mapper baseline으로 분리해서 본다.
 
+팀 공유용 비교 문서를 추가했다.
+
+- `docs/doc2hpo_repository_comparison.md`
+
 비교 대상:
 
 1. `phenotype_embedding`
