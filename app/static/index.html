@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
-  <script src="/static/app.js?v=ranking-options-v1" defer></script>
+  <script src="/static/app.js?v=sidebar-resize-v1" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -104,6 +104,14 @@
         </dl>
       </section>
     </aside>
+    <div
+      class="sidebar-resizer"
+      id="sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="사이드바 너비 조절"
+      tabindex="0"
+    ></div>
 
     <section class="results-area">
       <div class="results-toolbar">

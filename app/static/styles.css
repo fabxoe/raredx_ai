@@ -88,9 +88,10 @@ h1 { font-size: 16px; line-height: 1.2; }
 .icon-link:hover, .icon-button:hover { background: var(--surface-muted); border-color: var(--border-strong); }
 
 .workspace {
+  --sidebar-width: 326px;
   height: calc(100vh - 64px);
   display: grid;
-  grid-template-columns: 326px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) 8px minmax(0, 1fr);
 }
 
 .query-panel {
@@ -98,6 +99,34 @@ h1 { font-size: 16px; line-height: 1.2; }
   padding: 20px;
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+
+.sidebar-resizer {
+  position: relative;
+  z-index: 10;
+  width: 8px;
+  background: linear-gradient(90deg, var(--surface) 0 3px, transparent 3px 5px, var(--bg) 5px 100%);
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+body.sidebar-resizing .sidebar-resizer::after {
+  background: var(--border-strong);
+}
+body.sidebar-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .panel-heading, .results-toolbar, .section-title { justify-content: space-between; }
@@ -349,7 +378,7 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
 .legend-dot.gene { background: var(--amber); }
 
 @media (max-width: 1050px) {
-  .workspace { grid-template-columns: 290px minmax(0, 1fr); }
+  .workspace { --sidebar-width: 290px; }
   .results-grid { grid-template-columns: 1fr; grid-template-rows: minmax(330px, 48%) minmax(360px, 52%); overflow-y: auto; }
   .ranking-panel { border-right: 0; border-bottom: 1px solid var(--border); }
 }
@@ -358,6 +387,7 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   .app-header { padding: 0 12px; }
   .status-badge { display: none; }
   .workspace { width: 100%; height: auto; display: block; }
+  .sidebar-resizer { display: none; }
   .query-panel { width: 100%; overflow-x: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
   .segmented-control button { min-width: 0; padding: 0 5px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
   .results-area { width: 100%; height: 980px; padding: 10px; overflow: hidden; }
