@@ -323,10 +323,11 @@ function optionField(className, ownerId, option, optionStore) {
     const disabled = option.key === "use_ancestor_terms";
     return `
       <div class="option-boolean">
+        <span class="option-label-spacer" aria-hidden="true">&nbsp;</span>
         <button type="button" class="${escapeHtml(className)} option-toggle ${current ? "active" : ""}" ${dataAttrs} data-value="${current ? "true" : "false"}" ${disabled ? "disabled" : ""}>
           <i data-lucide="${current ? "check" : "plus"}"></i>
           <span>${escapeHtml(option.label)}</span>
-          ${disabled ? '<em>Coming soon</em>' : ""}
+          ${disabled ? '<em>Soon</em>' : ""}
         </button>
       </div>
     `;
