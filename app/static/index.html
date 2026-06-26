@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
-  <script src="/static/app.js?v=option-toggle-v1" defer></script>
+  <script src="/static/app.js?v=section-tooltips-v1" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -56,7 +56,7 @@
       <section id="note-input-section" class="input-section">
         <label for="clinical-note">Clinical note</label>
         <textarea id="clinical-note" rows="8">The patient has seizure, global developmental delay, and microcephaly.</textarea>
-        <div class="field-group">
+        <div class="field-group section-block">
           <label>HPO extraction</label>
           <div class="segmented-control mapper-control" id="hpo-mapper-mode"></div>
           <div class="mapper-options" id="hpo-mapper-options"></div>
@@ -64,7 +64,7 @@
         </div>
       </section>
 
-      <div class="field-group">
+      <div class="field-group section-block">
         <label>Disease ranking</label>
         <div class="segmented-control compact" id="ranking-method">
           <button class="active" data-method="ic">IC</button>

@@ -272,7 +272,12 @@ function renderMapperControls() {
   if (!visible.some((mapper) => mapper.id === state.hpoMapper)) state.hpoMapper = "dictionary";
   container.style.gridTemplateColumns = `repeat(${Math.max(visible.length, 1)}, 1fr)`;
   container.innerHTML = visible.map((mapper) => `
-    <button class="${mapper.id === state.hpoMapper ? "active" : ""}" data-mapper="${escapeHtml(mapper.id)}" title="${escapeHtml(mapper.description || "")}">
+    <button
+      class="${mapper.id === state.hpoMapper ? "active" : ""}"
+      data-mapper="${escapeHtml(mapper.id)}"
+      data-tooltip="${escapeHtml(mapper.description || "")}"
+      aria-label="${escapeHtml(`${mapper.label}: ${mapper.description || ""}`)}"
+    >
       ${escapeHtml(mapper.label)}
     </button>
   `).join("");
