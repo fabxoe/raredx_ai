@@ -333,10 +333,14 @@ function optionField(className, ownerId, option, optionStore) {
     `;
   }
   if (option.type === "select") {
-    return `<label>${escapeHtml(option.label)}<select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
+    return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
   }
   const inputType = option.type === "number" ? "number" : "text";
-  return `<label>${escapeHtml(option.label)}<input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
+  return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
+}
+
+function optionLabelClass(key) {
+  return key === "ic_weight" ? "option-label-pad" : "";
 }
 
 function bindOptionControls(className, optionStore) {

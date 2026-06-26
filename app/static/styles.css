@@ -177,17 +177,14 @@ h3 { font-size: 14px; }
   gap: 5px;
   margin: 0;
 }
-.option-grid label {
-  display: grid;
-  grid-template-rows: 34px 38px;
-  align-items: start;
-}
 .option-label-spacer {
-  height: 34px;
+  height: 15px;
   color: transparent;
   font-size: 12px;
   line-height: 1.25;
 }
+.option-label-text { display: block; }
+.option-label-pad .option-label-text { min-height: 32px; }
 .option-toggle {
   width: 100%;
   height: 38px;
