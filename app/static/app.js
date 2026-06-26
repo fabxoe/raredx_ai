@@ -181,21 +181,28 @@ function renderMapperCompare(results) {
     box.hidden = true;
     return;
   }
+  const readyCount = results.filter((result) => !result.error).length;
+  const blockedCount = results.length - readyCount;
   box.innerHTML = `
-    <div class="mapper-compare-title">Mapper comparison</div>
-    <div class="mapper-compare-grid">
-      ${results.map((result) => {
-        const topDisease = result.candidates?.[0];
-        const rankLabel = topDisease ? `${topDisease.disease_name} (${Number(topDisease.score).toFixed(2)})` : "—";
-        const status = result.error ? result.error : `${result.extracted_phenotypes.length} HPO · ${rankLabel}`;
-        return `
-          <div class="mapper-compare-row ${result.error ? "has-error" : ""}">
-            <strong>${escapeHtml(result.label)}</strong>
-            <span>${escapeHtml(status)}</span>
-          </div>
-        `;
-      }).join("")}
-    </div>
+    <details class="mapper-compare-details">
+      <summary>
+        <span>Mapper comparison</span>
+        <strong>${readyCount} ready · ${blockedCount} unavailable</strong>
+      </summary>
+      <div class="mapper-compare-grid">
+        ${results.map((result) => {
+          const topDisease = result.candidates?.[0];
+          const rankLabel = topDisease ? `${topDisease.disease_name} (${Number(topDisease.score).toFixed(2)})` : "—";
+          const status = result.error ? result.error : `${result.extracted_phenotypes.length} HPO · ${rankLabel}`;
+          return `
+            <div class="mapper-compare-row ${result.error ? "has-error" : ""}">
+              <strong>${escapeHtml(result.label)}</strong>
+              <span>${escapeHtml(status)}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </details>
   `;
   box.hidden = false;
 }

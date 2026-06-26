@@ -233,10 +233,38 @@ h3 { font-size: 14px; }
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
-.mapper-compare-title {
-  margin-bottom: 7px;
+.mapper-compare-details summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-muted);
   color: var(--muted);
+  cursor: pointer;
   font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+.mapper-compare-details summary::-webkit-details-marker { display: none; }
+.mapper-compare-details summary::after {
+  content: "Show";
+  color: var(--blue);
+  font-weight: 700;
+}
+.mapper-compare-details[open] summary {
+  margin-bottom: 7px;
+}
+.mapper-compare-details[open] summary::after {
+  content: "Hide";
+}
+.mapper-compare-details summary strong {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
   font-weight: 700;
 }
 .mapper-compare-grid { display: grid; gap: 6px; }
