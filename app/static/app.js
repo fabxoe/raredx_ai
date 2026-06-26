@@ -1,5 +1,5 @@
 const state = {
-  mode: "hpo",
+  mode: "note",
   method: "ic",
   hpoMapper: "dictionary",
   terms: new Map([

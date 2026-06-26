@@ -39,11 +39,11 @@
       </div>
 
       <div class="segmented-control" id="input-mode" role="tablist" aria-label="입력 방식">
-        <button class="active" data-mode="hpo" role="tab">HPO terms</button>
-        <button data-mode="note" role="tab">Clinical note</button>
+        <button class="active" data-mode="note" role="tab">Clinical note</button>
+        <button data-mode="hpo" role="tab">HPO terms</button>
       </div>
 
-      <section id="hpo-input-section" class="input-section">
+      <section id="hpo-input-section" class="input-section" hidden>
         <label for="hpo-search">HPO term</label>
         <div class="search-field">
           <i data-lucide="search"></i>
@@ -53,7 +53,7 @@
         <div id="selected-terms" class="selected-terms" aria-live="polite"></div>
       </section>
 
-      <section id="note-input-section" class="input-section" hidden>
+      <section id="note-input-section" class="input-section">
         <label for="clinical-note">Clinical note</label>
         <textarea id="clinical-note" rows="8">The patient has seizure, global developmental delay, and microcephaly.</textarea>
         <div class="field-group">
