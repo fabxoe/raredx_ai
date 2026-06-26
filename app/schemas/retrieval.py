@@ -3,7 +3,13 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-HPOMapperMode = Literal["off", "dictionary", "doc2hpo", "dictionary_doc2hpo"]
+HPOMapperMode = Literal[
+    "off",
+    "dictionary",
+    "doc2hpo",
+    "original_hpo_mapper",
+    "dictionary_doc2hpo",
+]
 
 
 class RetrievalRequest(BaseModel):
@@ -26,6 +32,7 @@ class ClinicalNoteRetrievalRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=100)
     max_hpo_terms: int = Field(default=30, ge=1, le=100)
     hpo_mapper: HPOMapperMode = "dictionary"
+    hpo_mapper_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
 class GraphEvidenceRequest(RetrievalRequest):
@@ -38,6 +45,7 @@ class ExtractedPhenotypeMatch(BaseModel):
     matched_text: str
     confidence: float
     source: str
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
 class MatchedPhenotype(BaseModel):

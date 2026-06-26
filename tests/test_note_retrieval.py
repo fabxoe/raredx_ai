@@ -100,4 +100,4 @@ def test_note_endpoint_reports_unconfigured_doc2hpo(tmp_path: Path, monkeypatch)
     )
 
     assert response.status_code == 503
-    assert "Doc2HPO mapper is not configured" in response.json()["detail"]
+    assert "doc2hpo mapper is not configured" in response.json()["detail"]

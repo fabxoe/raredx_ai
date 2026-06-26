@@ -71,3 +71,17 @@ def test_phenotype_search_endpoint(tmp_path: Path, monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()[0] == {"hpo_id": "HP:0001250", "name": "Seizure"}
+
+
+def test_hpo_mapper_capabilities_endpoint() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/api/hpo-mappers")
+
+    assert response.status_code == 200
+    body = response.json()
+    ids = {item["id"] for item in body}
+    assert {"dictionary", "doc2hpo", "original_hpo_mapper", "off"}.issubset(ids)
+    original = next(item for item in body if item["id"] == "original_hpo_mapper")
+    option_keys = {item["key"] for item in original["options"]}
+    assert {"protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)

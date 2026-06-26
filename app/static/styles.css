@@ -132,6 +132,58 @@ h3 { font-size: 14px; }
 .segmented-control button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .segmented-control.compact { grid-template-columns: repeat(3, 1fr); }
 .segmented-control.mapper-control { grid-template-columns: repeat(3, 1fr); }
+.mapper-options { margin-top: 10px; }
+.mapper-option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mapper-option-grid label, .mapper-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+}
+.mapper-toggle {
+  min-height: 38px;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.mapper-toggle input { width: auto; height: auto; margin: 0; }
+.mapper-warning {
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-soft);
+  color: #6c3c0f;
+  font-size: 11px;
+}
+.mapper-compare {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.mapper-compare-title {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mapper-compare-grid { display: grid; gap: 6px; }
+.mapper-compare-row {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-muted);
+}
+.mapper-compare-row strong { font-size: 12px; }
+.mapper-compare-row span { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.mapper-compare-row.has-error {
+  border-color: #efc3c3;
+  background: #fff1f1;
+}
+.mapper-compare-row.has-error span { color: var(--red); }
 
 .input-section, .field-group { margin-top: 17px; }
 label, .list-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }

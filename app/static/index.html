@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
-  <script src="/static/app.js?v=6d6005c" defer></script>
+  <script src="/static/app.js?v=mapper-config-v1" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -58,11 +58,9 @@
         <textarea id="clinical-note" rows="8">The patient has seizure, global developmental delay, and microcephaly.</textarea>
         <div class="field-group">
           <label>HPO mapper</label>
-          <div class="segmented-control mapper-control" id="hpo-mapper-mode">
-            <button class="active" data-mapper="dictionary">Dictionary</button>
-            <button data-mapper="doc2hpo">Doc2HPO</button>
-            <button data-mapper="off">Off</button>
-          </div>
+          <div class="segmented-control mapper-control" id="hpo-mapper-mode"></div>
+          <div class="mapper-options" id="hpo-mapper-options"></div>
+          <div class="mapper-compare" id="mapper-compare" hidden></div>
         </div>
       </section>
 

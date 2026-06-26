@@ -159,13 +159,21 @@ Database: neo4j
 
 ## Cloudflare Access 권장 설정
 
-그래프 DB에 개인 민감 데이터가 없더라도, Neo4j Browser는 쿼리를 직접 실행할 수 있으므로 팀원만 접근하도록 제한하는 것이 좋다.
+그래프 DB에 개인 민감 데이터가 없더라도, Neo4j Browser와 향후 Cypher Lab은 쿼리를 직접 실행할 수 있으므로 관리자/연구자만 접근하도록 제한한다.
+
+현재 권한 모델:
+
+- 나를 포함한 팀원 7명은 모두 관리자/연구자다.
+- 현재 공유 화면은 팀 내부 연구/시연용이다.
+- 향후 일반 사용자 또는 잠정 고객용 화면은 Graph Explorer로 분리한다.
+- Cypher Lab과 Neo4j Browser는 일반 사용자에게 공개하지 않는다.
 
 권장:
 
 ```text
-raredx-api.example.com   -> 팀원 이메일만 허용
-raredx-neo4j.example.com -> 팀원 이메일만 허용
+api.example.com        -> 팀원 관리자 이메일 7명 허용
+admin.example.com      -> 팀원 관리자 이메일 7명 허용
+neo4j.example.com      -> 가능하면 관리자만 임시 허용, 장기적으로 Cypher Lab으로 대체
 ```
 
 Cloudflare Dashboard에서 설정:

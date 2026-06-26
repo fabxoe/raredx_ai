@@ -83,6 +83,7 @@ def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> Clinical
             request.clinical_note,
             limit=request.max_hpo_terms,
             mapper_mode=request.hpo_mapper,
+            mapper_options=request.hpo_mapper_options,
         )
         hpo_terms = [item.hpo_id for item in extracted]
         if not hpo_terms:

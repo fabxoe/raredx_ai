@@ -22,7 +22,13 @@ class Settings(BaseSettings):
     embedding_weight: float = Field(default=0.35, alias="RAREDX_EMBEDDING_WEIGHT")
     graph_weight: float = Field(default=0.20, alias="RAREDX_GRAPH_WEIGHT")
     doc2hpo_url: str | None = Field(default=None, alias="RAREDX_DOC2HPO_URL")
+    original_hpo_mapper_url: str | None = Field(default=None, alias="RAREDX_ORIGINAL_HPO_MAPPER_URL")
     doc2hpo_timeout_seconds: float = Field(default=20.0, alias="RAREDX_DOC2HPO_TIMEOUT_SECONDS")
+    llm_provider: str = Field(default="off", alias="RAREDX_LLM_PROVIDER")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="RAREDX_OPENAI_MODEL")
+    ollama_url: str = Field(default="http://localhost:11434", alias="RAREDX_OLLAMA_URL")
+    ollama_chat_model: str = Field(default="phi4-mini", alias="RAREDX_OLLAMA_CHAT_MODEL")
 
 
 @lru_cache

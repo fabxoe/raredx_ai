@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.retrieval.knowledge import KnowledgeIndex
 
@@ -11,6 +11,7 @@ class ExtractedPhenotype:
     matched_text: str
     confidence: float
     source: str = "dictionary"
+    metadata: dict[str, str | int | float | bool | None] = field(default_factory=dict)
 
 
 class ClinicalNoteMatcher:
@@ -56,4 +57,3 @@ class ClinicalNoteMatcher:
 def _normalize_text(text: str) -> str:
     lowered = text.lower()
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", lowered)).strip()
-

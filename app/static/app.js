@@ -2,6 +2,8 @@ const state = {
   mode: "note",
   method: "ic",
   hpoMapper: "dictionary",
+  mapperCapabilities: [],
+  mapperOptions: {},
   terms: new Map([
     ["HP:0001250", "Seizure"],
     ["HP:0001263", "Global developmental delay"],
@@ -17,6 +19,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) window.lucide.createIcons();
   bindControls();
+  loadMapperCapabilities();
   renderTerms();
   initializeGraph();
   runAnalysis();
@@ -34,11 +37,6 @@ function bindControls() {
     $$("#ranking-method button").forEach((item) => item.classList.toggle("active", item === button));
     state.method = button.dataset.method;
     $("#method-label").textContent = methodLabel(state.method);
-  }));
-
-  $$("#hpo-mapper-mode button").forEach((button) => button.addEventListener("click", () => {
-    $$("#hpo-mapper-mode button").forEach((item) => item.classList.toggle("active", item === button));
-    state.hpoMapper = button.dataset.mapper;
   }));
 
   $("#hpo-search").addEventListener("input", debounce(searchPhenotypes, 220));
@@ -121,7 +119,9 @@ async function runAnalysis() {
         clinical_note: note,
         top_k: Number($("#top-k").value),
         hpo_mapper: state.hpoMapper,
+        hpo_mapper_options: state.mapperOptions[state.hpoMapper] || {},
       });
+      runMapperCompare(note);
       state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
       renderTerms();
     } else {
@@ -147,6 +147,125 @@ async function runAnalysis() {
     button.disabled = false;
     button.querySelector("span").textContent = "Run analysis";
   }
+}
+
+async function runMapperCompare(note) {
+  const mappers = state.mapperCapabilities
+    .filter((mapper) => ["dictionary", "doc2hpo", "original_hpo_mapper"].includes(mapper.id))
+    .map((mapper) => mapper.id);
+  if (!mappers.length) return;
+  try {
+    const response = await postJson("/api/hpo-mappers/compare", {
+      clinical_note: note,
+      mappers,
+      top_k: Number($("#top-k").value),
+      max_hpo_terms: 30,
+      ranking_method: state.method === "hybrid" ? "hybrid" : "ic",
+      mapper_options: state.mapperOptions,
+    });
+    renderMapperCompare(response.results);
+  } catch (error) {
+    $("#mapper-compare").hidden = true;
+  }
+}
+
+function renderMapperCompare(results) {
+  const box = $("#mapper-compare");
+  if (!results?.length) {
+    box.hidden = true;
+    return;
+  }
+  box.innerHTML = `
+    <div class="mapper-compare-title">Mapper comparison</div>
+    <div class="mapper-compare-grid">
+      ${results.map((result) => {
+        const topDisease = result.candidates?.[0];
+        const rankLabel = topDisease ? `${topDisease.disease_name} (${Number(topDisease.score).toFixed(2)})` : "—";
+        const status = result.error ? result.error : `${result.extracted_phenotypes.length} HPO · ${rankLabel}`;
+        return `
+          <div class="mapper-compare-row ${result.error ? "has-error" : ""}">
+            <strong>${escapeHtml(result.label)}</strong>
+            <span>${escapeHtml(status)}</span>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+  box.hidden = false;
+}
+
+async function loadMapperCapabilities() {
+  try {
+    const response = await fetch("/api/hpo-mappers");
+    if (!response.ok) throw new Error("HPO mapper 목록을 불러오지 못했습니다.");
+    state.mapperCapabilities = await response.json();
+  } catch (error) {
+    state.mapperCapabilities = [
+      { id: "dictionary", label: "Dictionary", configured: true, options: [] },
+      { id: "doc2hpo", label: "Doc2HPO", configured: false, options: [] },
+      { id: "off", label: "Off", configured: true, options: [] },
+    ];
+  }
+  renderMapperControls();
+}
+
+function renderMapperControls() {
+  const container = $("#hpo-mapper-mode");
+  const visible = state.mapperCapabilities.filter((mapper) => ["dictionary", "doc2hpo", "original_hpo_mapper", "off"].includes(mapper.id));
+  if (!visible.some((mapper) => mapper.id === state.hpoMapper)) state.hpoMapper = "dictionary";
+  container.style.gridTemplateColumns = `repeat(${Math.max(visible.length, 1)}, 1fr)`;
+  container.innerHTML = visible.map((mapper) => `
+    <button class="${mapper.id === state.hpoMapper ? "active" : ""}" data-mapper="${escapeHtml(mapper.id)}" title="${escapeHtml(mapper.description || "")}">
+      ${escapeHtml(mapper.label)}
+    </button>
+  `).join("");
+  $$("#hpo-mapper-mode button").forEach((button) => button.addEventListener("click", () => {
+    state.hpoMapper = button.dataset.mapper;
+    renderMapperControls();
+  }));
+  renderMapperOptions();
+}
+
+function renderMapperOptions() {
+  const mapper = state.mapperCapabilities.find((item) => item.id === state.hpoMapper);
+  const container = $("#hpo-mapper-options");
+  if (!mapper || !mapper.options?.length) {
+    container.innerHTML = mapper && !mapper.configured && state.hpoMapper !== "off"
+      ? `<div class="mapper-warning">${escapeHtml(mapper.label)} endpoint is not configured.</div>`
+      : "";
+    return;
+  }
+  if (!state.mapperOptions[state.hpoMapper]) state.mapperOptions[state.hpoMapper] = {};
+  container.innerHTML = `
+    ${!mapper.configured ? `<div class="mapper-warning">${escapeHtml(mapper.label)} endpoint is not configured.</div>` : ""}
+    <div class="mapper-option-grid">
+      ${mapper.options.map((option) => optionField(mapper.id, option)).join("")}
+    </div>
+  `;
+  $$(".mapper-option").forEach((input) => input.addEventListener("change", () => {
+    const mapperOptions = state.mapperOptions[input.dataset.mapper] || {};
+    mapperOptions[input.dataset.key] = readOptionValue(input);
+    state.mapperOptions[input.dataset.mapper] = mapperOptions;
+  }));
+}
+
+function optionField(mapperId, option) {
+  const current = state.mapperOptions[mapperId]?.[option.key] ?? option.default;
+  const attrs = `class="mapper-option" data-mapper="${escapeHtml(mapperId)}" data-key="${escapeHtml(option.key)}"`;
+  if (option.type === "boolean") {
+    return `<label class="mapper-toggle"><input ${attrs} type="checkbox" ${current ? "checked" : ""}>${escapeHtml(option.label)}</label>`;
+  }
+  if (option.type === "select") {
+    return `<label>${escapeHtml(option.label)}<select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
+  }
+  const inputType = option.type === "number" ? "number" : "text";
+  return `<label>${escapeHtml(option.label)}<input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
+}
+
+function readOptionValue(input) {
+  if (input.type === "checkbox") return input.checked;
+  if (input.type === "number") return Number(input.value);
+  return input.value;
 }
 
 function requestPayload() {

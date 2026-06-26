@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.graph import router as graph_router
+from app.api.hpo_mappers import router as hpo_mappers_router
 from app.api.retrieval import router as retrieval_router
 
 
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["retrieval"])
     app.include_router(graph_router, prefix="/api/graph", tags=["graph"])
+    app.include_router(hpo_mappers_router, prefix="/api/hpo-mappers", tags=["hpo-mappers"])
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
