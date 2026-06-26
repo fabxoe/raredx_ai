@@ -177,8 +177,13 @@ h3 { font-size: 14px; }
   gap: 5px;
   margin: 0;
 }
+.option-grid label {
+  display: grid;
+  grid-template-rows: 34px 38px;
+  align-items: start;
+}
 .option-label-spacer {
-  height: 15px;
+  height: 34px;
   color: transparent;
   font-size: 12px;
   line-height: 1.25;
@@ -301,6 +306,14 @@ h3 { font-size: 14px; }
   padding-top: 0;
 }
 label, .list-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.input-section > label,
+.section-block > label {
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 780;
+  line-height: 1.25;
+}
 .search-field { position: relative; }
 .search-field svg {
   position: absolute;
