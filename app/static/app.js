@@ -248,11 +248,8 @@ function renderRankingOptions() {
       ${method.options.map((option) => optionField("ranking-option", state.method, option, state.rankingOptions)).join("")}
     </div>
   `;
-  $$(".ranking-option").forEach((input) => input.addEventListener("change", () => {
-    const rankingOptions = state.rankingOptions[input.dataset.owner] || {};
-    rankingOptions[input.dataset.key] = readOptionValue(input);
-    state.rankingOptions[input.dataset.owner] = rankingOptions;
-  }));
+  bindOptionControls("ranking-option", state.rankingOptions);
+  if (window.lucide) window.lucide.createIcons();
 }
 
 async function loadMapperCapabilities() {
@@ -302,18 +299,25 @@ function renderMapperOptions() {
       ${mapper.options.map((option) => optionField("mapper-option", mapper.id, option, state.mapperOptions)).join("")}
     </div>
   `;
-  $$(".mapper-option").forEach((input) => input.addEventListener("change", () => {
-    const mapperOptions = state.mapperOptions[input.dataset.owner] || {};
-    mapperOptions[input.dataset.key] = readOptionValue(input);
-    state.mapperOptions[input.dataset.owner] = mapperOptions;
-  }));
+  bindOptionControls("mapper-option", state.mapperOptions);
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function optionField(className, ownerId, option, optionStore) {
   const current = optionStore[ownerId]?.[option.key] ?? option.default;
-  const attrs = `class="${escapeHtml(className)}" data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
+  const dataAttrs = `data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
+  const attrs = `class="${escapeHtml(className)}" ${dataAttrs}`;
   if (option.type === "boolean") {
-    return `<label class="mapper-toggle"><input ${attrs} type="checkbox" ${current ? "checked" : ""}>${escapeHtml(option.label)}</label>`;
+    const disabled = option.key === "use_ancestor_terms";
+    return `
+      <div class="option-boolean">
+        <button type="button" class="${escapeHtml(className)} option-toggle ${current ? "active" : ""}" ${dataAttrs} data-value="${current ? "true" : "false"}" ${disabled ? "disabled" : ""}>
+          <i data-lucide="${current ? "check" : "plus"}"></i>
+          <span>${escapeHtml(option.label)}</span>
+          ${disabled ? '<em>Coming soon</em>' : ""}
+        </button>
+      </div>
+    `;
   }
   if (option.type === "select") {
     return `<label>${escapeHtml(option.label)}<select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
@@ -322,10 +326,29 @@ function optionField(className, ownerId, option, optionStore) {
   return `<label>${escapeHtml(option.label)}<input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
 }
 
-function readOptionValue(input) {
-  if (input.type === "checkbox") return input.checked;
-  if (input.type === "number") return Number(input.value);
-  return input.value;
+function bindOptionControls(className, optionStore) {
+  $$(`.${className}`).forEach((control) => {
+    const eventName = control.classList.contains("option-toggle") ? "click" : "change";
+    control.addEventListener(eventName, () => {
+      if (control.disabled) return;
+      const ownerOptions = optionStore[control.dataset.owner] || {};
+      ownerOptions[control.dataset.key] = readOptionValue(control);
+      optionStore[control.dataset.owner] = ownerOptions;
+      if (control.classList.contains("option-toggle")) {
+        control.classList.toggle("active", ownerOptions[control.dataset.key]);
+        control.dataset.value = ownerOptions[control.dataset.key] ? "true" : "false";
+        const icon = control.querySelector("i");
+        if (icon) icon.setAttribute("data-lucide", ownerOptions[control.dataset.key] ? "check" : "plus");
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+  });
+}
+
+function readOptionValue(control) {
+  if (control.classList.contains("option-toggle")) return control.dataset.value !== "true";
+  if (control.type === "number") return Number(control.value);
+  return control.value;
 }
 
 function requestPayload() {

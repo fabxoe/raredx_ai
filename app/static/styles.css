@@ -134,21 +134,55 @@ h3 { font-size: 14px; }
 .segmented-control.mapper-control { grid-template-columns: repeat(3, 1fr); }
 .mapper-options, .ranking-options { margin-top: 10px; }
 .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.option-grid label, .mapper-toggle {
+.option-grid label, .option-boolean {
   display: flex;
   flex-direction: column;
   gap: 5px;
   margin: 0;
 }
-.mapper-toggle {
+.option-toggle {
+  width: 100%;
   min-height: 38px;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
+  gap: 7px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
 }
-.mapper-toggle input { width: auto; height: auto; margin: 0; }
+.option-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+.option-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.option-toggle.active {
+  border-color: #9ccab0;
+  background: var(--green-soft);
+  color: #135b3c;
+}
+.option-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: var(--surface-muted);
+}
+.option-toggle em {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+}
 .mapper-warning {
   margin-bottom: 8px;
   padding: 8px 9px;
@@ -205,6 +239,8 @@ input, textarea, select {
   outline: none;
 }
 input { height: 38px; padding: 0 10px 0 34px; }
+.option-grid input { padding: 0 10px; }
+input[type="checkbox"] { width: auto; height: auto; padding: 0; }
 textarea { padding: 10px; resize: vertical; line-height: 1.5; }
 select { height: 38px; padding: 0 9px; }
 input:focus, textarea:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 2px rgba(22, 120, 74, 0.12); }
