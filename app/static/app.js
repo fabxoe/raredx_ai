@@ -21,7 +21,6 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) window.lucide.createIcons();
   bindControls();
-  bindSidebarResize();
   loadMapperCapabilities();
   loadRankingCapabilities();
   renderTerms();
@@ -63,58 +62,6 @@ function bindControls() {
   });
   $("#fit-graph").addEventListener("click", () => state.graph?.fit(undefined, 36));
   $("#reset-graph").addEventListener("click", runGraphLayout);
-}
-
-function bindSidebarResize() {
-  const workspace = $(".workspace");
-  const resizer = $("#sidebar-resizer");
-  const panel = $(".query-panel");
-  if (!workspace || !resizer || !panel) return;
-
-  const storedWidth = Number(localStorage.getItem("raredx.sidebarWidth"));
-  if (Number.isFinite(storedWidth)) setSidebarWidth(storedWidth);
-
-  let startX = 0;
-  let startWidth = 0;
-
-  const resize = (event) => {
-    setSidebarWidth(startWidth + event.clientX - startX);
-  };
-
-  const stopResize = () => {
-    window.removeEventListener("pointermove", resize);
-    document.body.classList.remove("sidebar-resizing");
-    const currentWidth = panel.getBoundingClientRect().width;
-    localStorage.setItem("raredx.sidebarWidth", String(Math.round(currentWidth)));
-    state.graph?.resize();
-    state.graph?.fit(undefined, 36);
-  };
-
-  resizer.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    resizer.setPointerCapture?.(event.pointerId);
-    startX = event.clientX;
-    startWidth = panel.getBoundingClientRect().width;
-    document.body.classList.add("sidebar-resizing");
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", stopResize, { once: true });
-  });
-
-  resizer.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const currentWidth = panel.getBoundingClientRect().width;
-    const nextWidth = currentWidth + (event.key === "ArrowRight" ? 20 : -20);
-    setSidebarWidth(nextWidth);
-    localStorage.setItem("raredx.sidebarWidth", String(Math.round(panel.getBoundingClientRect().width)));
-    state.graph?.resize();
-  });
-
-  function setSidebarWidth(width) {
-    const maxWidth = Math.min(560, Math.max(280, window.innerWidth * 0.42));
-    const clamped = Math.max(280, Math.min(maxWidth, width));
-    workspace.style.setProperty("--sidebar-width", `${Math.round(clamped)}px`);
-  }
 }
 
 async function searchPhenotypes(event) {
