@@ -131,6 +131,7 @@ h3 { font-size: 14px; }
 }
 .segmented-control button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .segmented-control.compact { grid-template-columns: repeat(3, 1fr); }
+.segmented-control.mapper-control { grid-template-columns: repeat(3, 1fr); }
 
 .input-section, .field-group { margin-top: 17px; }
 label, .list-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }

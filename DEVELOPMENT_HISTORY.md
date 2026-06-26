@@ -2,6 +2,27 @@
 
 ## 2026-06-26
 
+### 선택형 HPO mapper mode 구현
+
+Clinical note 입력 앞단의 HPO mapper를 켜고 끌 수 있게 구현했다.
+
+- `ClinicalNoteRetrievalRequest`에 `hpo_mapper`를 추가했다.
+- 지원 모드:
+  - `dictionary`
+  - `doc2hpo`
+  - `dictionary_doc2hpo`
+  - `off`
+- 기본값은 기존 동작과 같은 `dictionary`다.
+- `doc2hpo` 모드는 외부 Doc2HPO/HPO-Mapper 호환 endpoint를 호출하는 adapter로 구현했다.
+- 외부 endpoint는 `RAREDX_DOC2HPO_URL`로 설정한다.
+- 설정이 없는데 `doc2hpo`를 선택하면 503으로 명확히 실패한다.
+- `off`를 선택하면 note endpoint는 400을 반환하고 HPO 직접 입력을 사용하도록 유도한다.
+- 고객용 프론트엔드 Clinical note 입력 영역에 mapper 선택 control을 추가했다.
+- 테스트를 추가했다.
+  - dictionary 기본 응답에 mapper mode 포함
+  - mapper off 상태 처리
+  - Doc2HPO 미설정 상태 처리
+
 ### 두 종류의 Doc2HPO/HPO Mapper 계열 비교
 
 Doc2HPO 계열 도구는 현재 disease ranking baseline과 같은 층이 아니라, clinical note를 HPO term으로 변환하는 upstream mapper baseline으로 분리해서 본다.

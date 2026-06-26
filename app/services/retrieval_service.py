@@ -5,6 +5,7 @@ from app.embedding.biomedical import BiomedicalEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
 from app.etl.processed_store import load_processed_knowledge_base
 from app.reranking.hybrid import HybridReranker
+from app.retrieval.doc2hpo_mapper import Doc2HPOMapper
 from app.retrieval.ic_baseline import ICBaselineRanker
 from app.retrieval.knowledge import KnowledgeIndex
 from app.retrieval.note_matcher import ClinicalNoteMatcher, ExtractedPhenotype
@@ -43,8 +44,35 @@ class RetrievalService:
     def note_matcher(self) -> ClinicalNoteMatcher:
         return ClinicalNoteMatcher(self.knowledge)
 
-    def extract_hpo_terms(self, clinical_note: str, limit: int = 30) -> list[ExtractedPhenotype]:
-        return self.note_matcher.extract(clinical_note, limit=limit)
+    @cached_property
+    def doc2hpo_mapper(self) -> Doc2HPOMapper:
+        return Doc2HPOMapper(
+            knowledge=self.knowledge,
+            endpoint_url=self.settings.doc2hpo_url,
+            timeout_seconds=self.settings.doc2hpo_timeout_seconds,
+        )
+
+    def extract_hpo_terms(
+        self,
+        clinical_note: str,
+        limit: int = 30,
+        mapper_mode: str = "dictionary",
+    ) -> list[ExtractedPhenotype]:
+        if mapper_mode == "off":
+            raise ValueError("hpo_mapper is off; use HPO terms input or enable a mapper")
+        if mapper_mode == "dictionary":
+            return self.note_matcher.extract(clinical_note, limit=limit)
+        if mapper_mode == "doc2hpo":
+            return self.doc2hpo_mapper.extract(clinical_note, limit=limit)
+        if mapper_mode == "dictionary_doc2hpo":
+            return _merge_extracted(
+                [
+                    *self.note_matcher.extract(clinical_note, limit=limit),
+                    *self.doc2hpo_mapper.extract(clinical_note, limit=limit),
+                ],
+                limit=limit,
+            )
+        raise ValueError(f"unsupported hpo_mapper: {mapper_mode}")
 
     def search_phenotypes(self, query: str, limit: int = 10) -> list[tuple[str, str]]:
         normalized = query.strip().lower()
@@ -93,3 +121,12 @@ class RetrievalService:
         unknown = [hpo_id for hpo_id in hpo_terms if hpo_id not in self.knowledge.phenotypes]
         if unknown:
             raise ValueError(f"unknown HPO term(s): {', '.join(unknown)}")
+
+
+def _merge_extracted(items: list[ExtractedPhenotype], limit: int) -> list[ExtractedPhenotype]:
+    merged: dict[str, ExtractedPhenotype] = {}
+    for item in items:
+        current = merged.get(item.hpo_id)
+        if current is None or item.confidence > current.confidence:
+            merged[item.hpo_id] = item
+    return sorted(merged.values(), key=lambda item: (-item.confidence, item.name))[:limit]

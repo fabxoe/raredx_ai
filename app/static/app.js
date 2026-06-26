@@ -1,6 +1,7 @@
 const state = {
   mode: "hpo",
   method: "ic",
+  hpoMapper: "dictionary",
   terms: new Map([
     ["HP:0001250", "Seizure"],
     ["HP:0001263", "Global developmental delay"],
@@ -33,6 +34,11 @@ function bindControls() {
     $$("#ranking-method button").forEach((item) => item.classList.toggle("active", item === button));
     state.method = button.dataset.method;
     $("#method-label").textContent = methodLabel(state.method);
+  }));
+
+  $$("#hpo-mapper-mode button").forEach((button) => button.addEventListener("click", () => {
+    $$("#hpo-mapper-mode button").forEach((item) => item.classList.toggle("active", item === button));
+    state.hpoMapper = button.dataset.mapper;
   }));
 
   $("#hpo-search").addEventListener("input", debounce(searchPhenotypes, 220));
@@ -114,6 +120,7 @@ async function runAnalysis() {
       rankingResponse = await postJson(`/api/retrieval/note/${noteMethod}`, {
         clinical_note: note,
         top_k: Number($("#top-k").value),
+        hpo_mapper: state.hpoMapper,
       });
       state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
       renderTerms();

@@ -79,7 +79,11 @@ def _retrieve(request: RetrievalRequest, mode: str) -> RetrievalResponse:
 def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> ClinicalNoteRetrievalResponse:
     service = get_retrieval_service()
     try:
-        extracted = service.extract_hpo_terms(request.clinical_note, limit=request.max_hpo_terms)
+        extracted = service.extract_hpo_terms(
+            request.clinical_note,
+            limit=request.max_hpo_terms,
+            mapper_mode=request.hpo_mapper,
+        )
         hpo_terms = [item.hpo_id for item in extracted]
         if not hpo_terms:
             raise ValueError("no HPO terms could be extracted from clinical_note")
@@ -88,10 +92,13 @@ def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> Clinical
         raise HTTPException(status_code=503, detail=f"processed data is not available: {exc}") from exc
     except ImportError as exc:
         raise HTTPException(status_code=503, detail=f"embedding dependency is not available: {exc}") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ClinicalNoteRetrievalResponse(
         clinical_note=request.clinical_note,
+        hpo_mapper=request.hpo_mapper,
         query_hpo_terms=hpo_terms,
         extracted_phenotypes=[ExtractedPhenotypeMatch(**item.__dict__) for item in extracted],
         candidates=candidates,

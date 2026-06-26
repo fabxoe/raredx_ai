@@ -1,4 +1,9 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
+
+
+HPOMapperMode = Literal["off", "dictionary", "doc2hpo", "dictionary_doc2hpo"]
 
 
 class RetrievalRequest(BaseModel):
@@ -20,6 +25,7 @@ class ClinicalNoteRetrievalRequest(BaseModel):
     genes: list[str] | None = None
     top_k: int = Field(default=10, ge=1, le=100)
     max_hpo_terms: int = Field(default=30, ge=1, le=100)
+    hpo_mapper: HPOMapperMode = "dictionary"
 
 
 class GraphEvidenceRequest(RetrievalRequest):
@@ -66,6 +72,7 @@ class RetrievalResponse(BaseModel):
 
 class ClinicalNoteRetrievalResponse(RetrievalResponse):
     clinical_note: str
+    hpo_mapper: HPOMapperMode
     extracted_phenotypes: list[ExtractedPhenotypeMatch]
 
 

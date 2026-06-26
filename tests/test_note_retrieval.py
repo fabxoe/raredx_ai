@@ -47,6 +47,57 @@ def test_note_ic_endpoint(tmp_path: Path, monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["hpo_mapper"] == "dictionary"
     assert body["query_hpo_terms"] == ["HP:0001263", "HP:0001250"]
     assert body["candidates"][0]["disease_id"] == "OMIM:312750"
 
+
+def test_note_endpoint_can_disable_mapper(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/note/ic",
+        json={
+            "clinical_note": "Patient has seizure.",
+            "top_k": 1,
+            "hpo_mapper": "off",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "hpo_mapper is off" in response.json()["detail"]
+
+
+def test_note_endpoint_reports_unconfigured_doc2hpo(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    monkeypatch.delenv("RAREDX_DOC2HPO_URL", raising=False)
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/note/ic",
+        json={
+            "clinical_note": "Patient has seizure.",
+            "top_k": 1,
+            "hpo_mapper": "doc2hpo",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "Doc2HPO mapper is not configured" in response.json()["detail"]

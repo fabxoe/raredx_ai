@@ -14,6 +14,7 @@ RARE_DX_AI는 HPO phenotype 정보를 기반으로 rare disease candidate를 우
 - FAISS disease index
 - Hybrid re-ranking
 - Dictionary 기반 clinical note to HPO matcher
+- 선택형 Doc2HPO/HPO-Mapper adapter
 - FastAPI retrieval API
 - 고객용 disease ranking 및 knowledge graph 프론트엔드
 - Neo4j Browser 기반 graph 시각화
@@ -21,7 +22,7 @@ RARE_DX_AI는 HPO phenotype 정보를 기반으로 rare disease candidate를 우
 아직 구현하지 않은 것:
 
 - Biomedical NER 기반 HPO mapper
-- LLM 기반 HPO mapper
+- 내장 LLM 기반 HPO mapper
 - LLM explanation generation
 - GNN 실험
 
@@ -224,12 +225,28 @@ curl -X POST http://127.0.0.1:8010/api/retrieval/hybrid \
 
 ### Clinical note 입력
 
-현재 note mapper는 dictionary 기반이다. Biomedical NER 또는 LLM mapper는 아직 아니다.
+Clinical note 입력은 `hpo_mapper`로 앞단 HPO mapper를 선택할 수 있다.
+
+지원 모드:
+
+- `dictionary`: 기본값. HPO name/synonym phrase를 note에서 직접 찾는다.
+- `doc2hpo`: 외부 Doc2HPO/HPO-Mapper 호환 endpoint를 호출한다.
+- `dictionary_doc2hpo`: dictionary와 Doc2HPO 결과를 병합한다.
+- `off`: note mapper를 끈다. 이 경우 note endpoint는 400을 반환하고 HPO 직접 입력을 사용해야 한다.
+
+`doc2hpo` 모드는 `.env`에 외부 endpoint를 설정해야 한다.
+
+```text
+RAREDX_DOC2HPO_URL=http://127.0.0.1:9000/map
+RAREDX_DOC2HPO_TIMEOUT_SECONDS=20
+```
+
+외부 endpoint는 `POST` JSON 요청을 받아 HPO 후보 목록을 JSON으로 반환해야 한다. 지원하는 응답 key는 `extracted_phenotypes`, `hpo_terms`, `matches`, `results`, `mapped_terms` 중 하나다.
 
 ```bash
 curl -X POST http://127.0.0.1:8010/api/retrieval/note/ic \
   -H "Content-Type: application/json" \
-  -d '{"clinical_note":"The patient has seizure, global developmental delay, and microcephaly.","top_k":3}'
+  -d '{"clinical_note":"The patient has seizure, global developmental delay, and microcephaly.","top_k":3,"hpo_mapper":"dictionary"}'
 ```
 
 ### Graph evidence
