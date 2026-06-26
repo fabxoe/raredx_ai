@@ -29,8 +29,9 @@ class HPOMapperCompareRequest(BaseModel):
     mappers: list[HPOMapperMode] = Field(default_factory=lambda: ["dictionary", "doc2hpo"])
     top_k: int = Field(default=10, ge=1, le=100)
     max_hpo_terms: int = Field(default=30, ge=1, le=100)
-    ranking_method: Literal["ic", "hybrid"] = "ic"
+    ranking_method: Literal["ic", "embedding", "hybrid"] = "ic"
     mapper_options: dict[str, dict[str, str | int | float | bool]] = Field(default_factory=dict)
+    ranking_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
 class HPOMapperRunResult(BaseModel):

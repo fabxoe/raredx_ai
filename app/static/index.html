@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
-  <script src="/static/app.js?v=mapper-config-v1" defer></script>
+  <script src="/static/app.js?v=ranking-options-v1" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -57,7 +57,7 @@
         <label for="clinical-note">Clinical note</label>
         <textarea id="clinical-note" rows="8">The patient has seizure, global developmental delay, and microcephaly.</textarea>
         <div class="field-group">
-          <label>HPO mapper</label>
+          <label>HPO extraction</label>
           <div class="segmented-control mapper-control" id="hpo-mapper-mode"></div>
           <div class="mapper-options" id="hpo-mapper-options"></div>
           <div class="mapper-compare" id="mapper-compare" hidden></div>
@@ -65,12 +65,13 @@
       </section>
 
       <div class="field-group">
-        <label>Ranking method</label>
+        <label>Disease ranking</label>
         <div class="segmented-control compact" id="ranking-method">
           <button class="active" data-method="ic">IC</button>
           <button data-method="embedding">Embedding</button>
           <button data-method="hybrid">Hybrid</button>
         </div>
+        <div class="ranking-options" id="ranking-options"></div>
       </div>
 
       <div class="field-row">

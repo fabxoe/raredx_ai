@@ -4,6 +4,8 @@ const state = {
   hpoMapper: "dictionary",
   mapperCapabilities: [],
   mapperOptions: {},
+  rankingCapabilities: [],
+  rankingOptions: {},
   terms: new Map([
     ["HP:0001250", "Seizure"],
     ["HP:0001263", "Global developmental delay"],
@@ -20,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) window.lucide.createIcons();
   bindControls();
   loadMapperCapabilities();
+  loadRankingCapabilities();
   renderTerms();
   initializeGraph();
   runAnalysis();
@@ -37,6 +40,7 @@ function bindControls() {
     $$("#ranking-method button").forEach((item) => item.classList.toggle("active", item === button));
     state.method = button.dataset.method;
     $("#method-label").textContent = methodLabel(state.method);
+    renderRankingOptions();
   }));
 
   $("#hpo-search").addEventListener("input", debounce(searchPhenotypes, 220));
@@ -114,12 +118,13 @@ async function runAnalysis() {
     if (state.mode === "note") {
       const note = $("#clinical-note").value.trim();
       if (!note) throw new Error("Clinical note를 입력하세요.");
-      const noteMethod = state.method === "hybrid" ? "hybrid" : "ic";
+      const noteMethod = state.method;
       rankingResponse = await postJson(`/api/retrieval/note/${noteMethod}`, {
         clinical_note: note,
         top_k: Number($("#top-k").value),
         hpo_mapper: state.hpoMapper,
         hpo_mapper_options: state.mapperOptions[state.hpoMapper] || {},
+        ranking_options: state.rankingOptions[state.method] || {},
       });
       runMapperCompare(note);
       state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
@@ -160,8 +165,9 @@ async function runMapperCompare(note) {
       mappers,
       top_k: Number($("#top-k").value),
       max_hpo_terms: 30,
-      ranking_method: state.method === "hybrid" ? "hybrid" : "ic",
+      ranking_method: state.method,
       mapper_options: state.mapperOptions,
+      ranking_options: state.rankingOptions[state.method] || {},
     });
     renderMapperCompare(response.results);
   } catch (error) {
@@ -194,6 +200,61 @@ function renderMapperCompare(results) {
   box.hidden = false;
 }
 
+async function loadRankingCapabilities() {
+  try {
+    const response = await fetch("/api/retrieval/ranking-methods");
+    if (!response.ok) throw new Error("Disease ranking 목록을 불러오지 못했습니다.");
+    state.rankingCapabilities = await response.json();
+  } catch (error) {
+    state.rankingCapabilities = [
+      { id: "ic", label: "IC", configured: true, options: [] },
+      { id: "embedding", label: "Embedding", configured: true, options: [] },
+      { id: "hybrid", label: "Hybrid", configured: true, options: [] },
+    ];
+  }
+  renderRankingControls();
+}
+
+function renderRankingControls() {
+  const container = $("#ranking-method");
+  if (!container) return;
+  if (!state.rankingCapabilities.some((method) => method.id === state.method)) state.method = "ic";
+  container.innerHTML = state.rankingCapabilities.map((method) => `
+    <button class="${method.id === state.method ? "active" : ""}" data-method="${escapeHtml(method.id)}" title="${escapeHtml(method.description || "")}">
+      ${escapeHtml(method.label)}
+    </button>
+  `).join("");
+  container.style.gridTemplateColumns = `repeat(${Math.max(state.rankingCapabilities.length, 1)}, 1fr)`;
+  $$("#ranking-method button").forEach((button) => button.addEventListener("click", () => {
+    state.method = button.dataset.method;
+    renderRankingControls();
+    $("#method-label").textContent = methodLabel(state.method);
+  }));
+  $("#method-label").textContent = methodLabel(state.method);
+  renderRankingOptions();
+}
+
+function renderRankingOptions() {
+  const method = state.rankingCapabilities.find((item) => item.id === state.method);
+  const container = $("#ranking-options");
+  if (!container) return;
+  if (!method || !method.options?.length) {
+    container.innerHTML = "";
+    return;
+  }
+  if (!state.rankingOptions[state.method]) state.rankingOptions[state.method] = {};
+  container.innerHTML = `
+    <div class="option-grid">
+      ${method.options.map((option) => optionField("ranking-option", state.method, option, state.rankingOptions)).join("")}
+    </div>
+  `;
+  $$(".ranking-option").forEach((input) => input.addEventListener("change", () => {
+    const rankingOptions = state.rankingOptions[input.dataset.owner] || {};
+    rankingOptions[input.dataset.key] = readOptionValue(input);
+    state.rankingOptions[input.dataset.owner] = rankingOptions;
+  }));
+}
+
 async function loadMapperCapabilities() {
   try {
     const response = await fetch("/api/hpo-mappers");
@@ -203,7 +264,6 @@ async function loadMapperCapabilities() {
     state.mapperCapabilities = [
       { id: "dictionary", label: "Dictionary", configured: true, options: [] },
       { id: "doc2hpo", label: "Doc2HPO", configured: false, options: [] },
-      { id: "off", label: "Off", configured: true, options: [] },
     ];
   }
   renderMapperControls();
@@ -211,7 +271,7 @@ async function loadMapperCapabilities() {
 
 function renderMapperControls() {
   const container = $("#hpo-mapper-mode");
-  const visible = state.mapperCapabilities.filter((mapper) => ["dictionary", "doc2hpo", "original_hpo_mapper", "off"].includes(mapper.id));
+  const visible = state.mapperCapabilities.filter((mapper) => ["dictionary", "doc2hpo", "original_hpo_mapper"].includes(mapper.id));
   if (!visible.some((mapper) => mapper.id === state.hpoMapper)) state.hpoMapper = "dictionary";
   container.style.gridTemplateColumns = `repeat(${Math.max(visible.length, 1)}, 1fr)`;
   container.innerHTML = visible.map((mapper) => `
@@ -238,20 +298,20 @@ function renderMapperOptions() {
   if (!state.mapperOptions[state.hpoMapper]) state.mapperOptions[state.hpoMapper] = {};
   container.innerHTML = `
     ${!mapper.configured ? `<div class="mapper-warning">${escapeHtml(mapper.label)} endpoint is not configured.</div>` : ""}
-    <div class="mapper-option-grid">
-      ${mapper.options.map((option) => optionField(mapper.id, option)).join("")}
+    <div class="option-grid">
+      ${mapper.options.map((option) => optionField("mapper-option", mapper.id, option, state.mapperOptions)).join("")}
     </div>
   `;
   $$(".mapper-option").forEach((input) => input.addEventListener("change", () => {
-    const mapperOptions = state.mapperOptions[input.dataset.mapper] || {};
+    const mapperOptions = state.mapperOptions[input.dataset.owner] || {};
     mapperOptions[input.dataset.key] = readOptionValue(input);
-    state.mapperOptions[input.dataset.mapper] = mapperOptions;
+    state.mapperOptions[input.dataset.owner] = mapperOptions;
   }));
 }
 
-function optionField(mapperId, option) {
-  const current = state.mapperOptions[mapperId]?.[option.key] ?? option.default;
-  const attrs = `class="mapper-option" data-mapper="${escapeHtml(mapperId)}" data-key="${escapeHtml(option.key)}"`;
+function optionField(className, ownerId, option, optionStore) {
+  const current = optionStore[ownerId]?.[option.key] ?? option.default;
+  const attrs = `class="${escapeHtml(className)}" data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
   if (option.type === "boolean") {
     return `<label class="mapper-toggle"><input ${attrs} type="checkbox" ${current ? "checked" : ""}>${escapeHtml(option.label)}</label>`;
   }
@@ -272,6 +332,7 @@ function requestPayload() {
   return {
     hpo_terms: [...state.terms.keys()],
     top_k: Number($("#top-k").value),
+    ranking_options: state.rankingOptions[state.method] || {},
   };
 }
 
@@ -416,6 +477,8 @@ function graphStyles() {
 }
 
 function methodLabel(method) {
+  const configured = state.rankingCapabilities.find((item) => item.id === method);
+  if (configured?.label) return configured.label;
   return { ic: "IC baseline", embedding: "SapBERT · FAISS", hybrid: "Hybrid re-ranking" }[method];
 }
 

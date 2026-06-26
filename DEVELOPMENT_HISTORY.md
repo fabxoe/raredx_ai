@@ -11,12 +11,13 @@ Clinical note 입력 앞단의 HPO mapper를 켜고 끌 수 있게 구현했다.
   - `dictionary`
   - `doc2hpo`
   - `dictionary_doc2hpo`
-  - `off`
 - 기본값은 기존 동작과 같은 `dictionary`다.
 - `doc2hpo` 모드는 외부 Doc2HPO/HPO-Mapper 호환 endpoint를 호출하는 adapter로 구현했다.
 - 외부 endpoint는 `RAREDX_DOC2HPO_URL`로 설정한다.
 - 설정이 없는데 `doc2hpo`를 선택하면 503으로 명확히 실패한다.
-- `off`를 선택하면 note endpoint는 400을 반환하고 HPO 직접 입력을 사용하도록 유도한다.
+- API 호환성을 위해 `off` mode 처리는 남겨두지만, 프론트엔드 HPO extraction 선택지에서는 제외했다.
+  - Clinical note 입력은 `dictionary`를 기본값으로 사용한다.
+  - HPO를 직접 입력하려면 `HPO terms` 탭을 사용한다.
 - 고객용 프론트엔드 Clinical note 입력 영역에 mapper 선택 control을 추가했다.
 - 테스트를 추가했다.
   - dictionary 기본 응답에 mapper mode 포함
@@ -37,6 +38,18 @@ Mapper 비교와 확장 가능한 설정 구조를 추가했다.
   - OpenAI Chat Completions JSON 응답을 우선 지원한다.
   - Ollama `/api/chat` JSON 응답을 로컬 fallback으로 지원한다.
   - LLM은 새 HPO를 만들지 않고 mapper 후보 중 선택/제외만 수행한다.
+
+Disease ranking option 구조를 추가했다.
+
+- HPO extraction 옵션과 Disease ranking 옵션을 분리했다.
+  - HPO extraction 옵션: Doc2HPO threshold, candidate limit, LLM QC/selection 등
+  - Disease ranking 옵션: disease embedding backend, hybrid weight, graph evidence mode 등
+- `/api/retrieval/ranking-methods`에서 ranking method capability를 반환한다.
+- `RetrievalRequest`와 `ClinicalNoteRetrievalRequest`에 `ranking_options`를 추가했다.
+- Clinical note 입력에서도 `Embedding` ranking을 직접 호출할 수 있게 `POST /api/retrieval/note/embedding`을 추가했다.
+- 현재 지원하는 disease embedding backend는 `sapbert_faiss` 하나로 제한했다.
+- `Hybrid` 선택 시 요청별로 `ic_weight`, `embedding_weight`, `graph_weight`를 바꿀 수 있게 했다.
+- 프론트엔드는 `HPO extraction`과 `Disease ranking` 섹션을 나누고, backend capability 기반으로 option form을 렌더링한다.
 
 ### 두 종류의 Doc2HPO/HPO Mapper 계열 비교
 

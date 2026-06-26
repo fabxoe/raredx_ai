@@ -132,9 +132,9 @@ h3 { font-size: 14px; }
 .segmented-control button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .segmented-control.compact { grid-template-columns: repeat(3, 1fr); }
 .segmented-control.mapper-control { grid-template-columns: repeat(3, 1fr); }
-.mapper-options { margin-top: 10px; }
-.mapper-option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.mapper-option-grid label, .mapper-toggle {
+.mapper-options, .ranking-options { margin-top: 10px; }
+.option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.option-grid label, .mapper-toggle {
   display: flex;
   flex-direction: column;
   gap: 5px;

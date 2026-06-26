@@ -10,12 +10,14 @@ HPOMapperMode = Literal[
     "original_hpo_mapper",
     "dictionary_doc2hpo",
 ]
+RankingMethod = Literal["ic", "embedding", "hybrid"]
 
 
 class RetrievalRequest(BaseModel):
     hpo_terms: list[str] = Field(min_length=1)
     genes: list[str] | None = None
     top_k: int = Field(default=10, ge=1, le=100)
+    ranking_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
     @field_validator("hpo_terms")
     @classmethod
@@ -33,6 +35,7 @@ class ClinicalNoteRetrievalRequest(BaseModel):
     max_hpo_terms: int = Field(default=30, ge=1, le=100)
     hpo_mapper: HPOMapperMode = "dictionary"
     hpo_mapper_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    ranking_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
 class GraphEvidenceRequest(RetrievalRequest):

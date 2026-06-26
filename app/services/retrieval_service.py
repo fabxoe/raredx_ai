@@ -113,20 +113,49 @@ class RetrievalService:
         partial.sort(key=lambda item: (not item[1].lower().startswith(normalized), len(item[1]), item[1]))
         return (exact + partial)[:limit]
 
-    def rank_ic(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+    def rank_ic(
+        self,
+        hpo_terms: list[str],
+        top_k: int,
+        options: dict[str, str | int | float | bool] | None = None,
+    ) -> list[CandidateDisease]:
+        _validate_ic_options(options or {})
         self._validate_hpo_terms(hpo_terms)
         return self.ic_ranker.rank(hpo_terms, top_k)
 
-    def rank_embedding(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+    def rank_embedding(
+        self,
+        hpo_terms: list[str],
+        top_k: int,
+        options: dict[str, str | int | float | bool] | None = None,
+    ) -> list[CandidateDisease]:
+        _validate_embedding_options(options or {})
         self._validate_hpo_terms(hpo_terms)
         return self.embedding_index.search(hpo_terms, top_k)
 
-    def rank_hybrid(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
+    def rank_hybrid(
+        self,
+        hpo_terms: list[str],
+        top_k: int,
+        options: dict[str, str | int | float | bool] | None = None,
+    ) -> list[CandidateDisease]:
+        ranking_options = options or {}
+        _validate_embedding_options(ranking_options)
         self._validate_hpo_terms(hpo_terms)
-        ic_candidates = self.rank_ic(hpo_terms, max(top_k * 3, 30))
-        embedding_candidates = self.rank_embedding(hpo_terms, max(top_k * 3, 30))
+        ic_candidates = self.rank_ic(hpo_terms, max(top_k * 3, 30), options=ranking_options)
+        embedding_candidates = self.rank_embedding(hpo_terms, max(top_k * 3, 30), options=ranking_options)
         graph_candidates = self._local_graph_overlap(hpo_terms, max(top_k * 3, 30))
-        return self.reranker.rerank(ic_candidates, embedding_candidates, graph_candidates, top_k)
+        reranker = self._reranker_for_options(ranking_options)
+        return reranker.rerank(ic_candidates, embedding_candidates, graph_candidates, top_k)
+
+    def _reranker_for_options(self, options: dict[str, str | int | float | bool]) -> HybridReranker:
+        if not any(key in options for key in ("ic_weight", "embedding_weight", "graph_weight")):
+            return self.reranker
+        return HybridReranker(
+            ic_weight=_float_option(options, "ic_weight", self.settings.ic_weight),
+            embedding_weight=_float_option(options, "embedding_weight", self.settings.embedding_weight),
+            graph_weight=_float_option(options, "graph_weight", self.settings.graph_weight),
+        )
 
     def _local_graph_overlap(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
         candidates = self.ic_ranker.rank(hpo_terms, top_k)
@@ -154,3 +183,31 @@ def _merge_extracted(items: list[ExtractedPhenotype], limit: int) -> list[Extrac
         if current is None or item.confidence > current.confidence:
             merged[item.hpo_id] = item
     return sorted(merged.values(), key=lambda item: (-item.confidence, item.name))[:limit]
+
+
+def _validate_ic_options(options: dict[str, str | int | float | bool]) -> None:
+    if bool(options.get("use_ancestor_terms")):
+        raise ValueError("ancestor-aware IC ranking is not implemented yet")
+    ic_mode = str(options.get("ic_mode") or "direct")
+    if ic_mode != "direct":
+        raise ValueError(f"unsupported IC mode: {ic_mode}")
+
+
+def _validate_embedding_options(options: dict[str, str | int | float | bool]) -> None:
+    backend = str(options.get("embedding_backend") or "sapbert_faiss")
+    if backend != "sapbert_faiss":
+        raise ValueError(f"unsupported disease embedding backend: {backend}")
+
+
+def _float_option(options: dict[str, str | int | float | bool], key: str, default: float) -> float:
+    value = options.get(key, default)
+    if isinstance(value, bool):
+        raise ValueError(f"{key} must be a number")
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be a number") from exc
+    return default

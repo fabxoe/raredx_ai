@@ -85,3 +85,42 @@ def test_hpo_mapper_capabilities_endpoint() -> None:
     original = next(item for item in body if item["id"] == "original_hpo_mapper")
     option_keys = {item["key"] for item in original["options"]}
     assert {"protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)
+
+
+def test_ranking_method_capabilities_endpoint() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/api/retrieval/ranking-methods")
+
+    assert response.status_code == 200
+    body = response.json()
+    ids = {item["id"] for item in body}
+    assert ids == {"ic", "embedding", "hybrid"}
+    hybrid = next(item for item in body if item["id"] == "hybrid")
+    option_keys = {item["key"] for item in hybrid["options"]}
+    assert {"embedding_backend", "ic_weight", "embedding_weight", "graph_weight"}.issubset(option_keys)
+
+
+def test_embedding_retrieval_rejects_unsupported_backend(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/embedding",
+        json={
+            "hpo_terms": ["HP:0001250"],
+            "top_k": 1,
+            "ranking_options": {"embedding_backend": "unknown_backend"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert "unsupported disease embedding backend" in response.json()["detail"]

@@ -3,6 +3,8 @@ from functools import lru_cache
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
+from app.retrieval.ranking_registry import ranking_method_capabilities
+from app.schemas.ranking import RankingMethodCapability
 from app.schemas.retrieval import (
     ClinicalNoteRetrievalRequest,
     ClinicalNoteRetrievalResponse,
@@ -36,6 +38,11 @@ def retrieve_hybrid(request: RetrievalRequest) -> RetrievalResponse:
     return _retrieve(request, mode="hybrid")
 
 
+@router.get("/ranking-methods", response_model=list[RankingMethodCapability])
+def list_ranking_methods() -> list[RankingMethodCapability]:
+    return ranking_method_capabilities(get_settings())
+
+
 @router.get("/phenotypes", response_model=list[PhenotypeSearchItem])
 def search_phenotypes(
     q: str = Query(min_length=2),
@@ -53,6 +60,11 @@ def retrieve_note_ic(request: ClinicalNoteRetrievalRequest) -> ClinicalNoteRetri
     return _retrieve_note(request, mode="ic")
 
 
+@router.post("/note/embedding", response_model=ClinicalNoteRetrievalResponse)
+def retrieve_note_embedding(request: ClinicalNoteRetrievalRequest) -> ClinicalNoteRetrievalResponse:
+    return _retrieve_note(request, mode="embedding")
+
+
 @router.post("/note/hybrid", response_model=ClinicalNoteRetrievalResponse)
 def retrieve_note_hybrid(request: ClinicalNoteRetrievalRequest) -> ClinicalNoteRetrievalResponse:
     return _retrieve_note(request, mode="hybrid")
@@ -62,11 +74,11 @@ def _retrieve(request: RetrievalRequest, mode: str) -> RetrievalResponse:
     service = get_retrieval_service()
     try:
         if mode == "ic":
-            candidates = service.rank_ic(request.hpo_terms, request.top_k)
+            candidates = service.rank_ic(request.hpo_terms, request.top_k, options=request.ranking_options)
         elif mode == "embedding":
-            candidates = service.rank_embedding(request.hpo_terms, request.top_k)
+            candidates = service.rank_embedding(request.hpo_terms, request.top_k, options=request.ranking_options)
         else:
-            candidates = service.rank_hybrid(request.hpo_terms, request.top_k)
+            candidates = service.rank_hybrid(request.hpo_terms, request.top_k, options=request.ranking_options)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=f"processed data is not available: {exc}") from exc
     except ImportError as exc:
@@ -88,7 +100,12 @@ def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> Clinical
         hpo_terms = [item.hpo_id for item in extracted]
         if not hpo_terms:
             raise ValueError("no HPO terms could be extracted from clinical_note")
-        candidates = service.rank_ic(hpo_terms, request.top_k) if mode == "ic" else service.rank_hybrid(hpo_terms, request.top_k)
+        if mode == "ic":
+            candidates = service.rank_ic(hpo_terms, request.top_k, options=request.ranking_options)
+        elif mode == "embedding":
+            candidates = service.rank_embedding(hpo_terms, request.top_k, options=request.ranking_options)
+        else:
+            candidates = service.rank_hybrid(hpo_terms, request.top_k, options=request.ranking_options)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=f"processed data is not available: {exc}") from exc
     except ImportError as exc:

@@ -57,9 +57,11 @@ def compare_hpo_mappers(request: HPOMapperCompareRequest) -> HPOMapperCompareRes
             candidates = []
             if hpo_terms:
                 if request.ranking_method == "hybrid":
-                    candidates = service.rank_hybrid(hpo_terms, request.top_k)
+                    candidates = service.rank_hybrid(hpo_terms, request.top_k, options=request.ranking_options)
+                elif request.ranking_method == "embedding":
+                    candidates = service.rank_embedding(hpo_terms, request.top_k, options=request.ranking_options)
                 else:
-                    candidates = service.rank_ic(hpo_terms, request.top_k)
+                    candidates = service.rank_ic(hpo_terms, request.top_k, options=request.ranking_options)
             results.append(
                 HPOMapperRunResult(
                     mapper=mapper_id,
