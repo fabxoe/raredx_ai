@@ -340,7 +340,7 @@ function optionField(className, ownerId, option, optionStore) {
 }
 
 function optionLabelClass(key) {
-  return key === "ic_weight" ? "option-label-pad" : "";
+  return ["embedding_model", "ic_weight"].includes(key) ? "option-label-pad" : "";
 }
 
 function bindOptionControls(className, optionStore) {
