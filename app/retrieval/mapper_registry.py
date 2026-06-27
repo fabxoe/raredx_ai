@@ -39,6 +39,13 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
                 HPOMapperOption(key="threshold", label="Threshold", type="number", default=0.76),
                 HPOMapperOption(key="embed_model", label="Embed model", type="text", default="nomic-embed-text"),
                 HPOMapperOption(
+                    key="max_genes",
+                    label="Gene preview",
+                    type="select",
+                    default="50",
+                    choices=["50", "100", "1000", "all"],
+                ),
+                HPOMapperOption(
                     key="llm_provider",
                     label="LLM provider",
                     type="select",

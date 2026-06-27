@@ -10,6 +10,7 @@ from app.retrieval.doc2hpo_mapper import Doc2HPOMapper
 from app.retrieval.ic_baseline import ICBaselineRanker
 from app.retrieval.knowledge import KnowledgeIndex
 from app.retrieval.note_matcher import ClinicalNoteMatcher, ExtractedPhenotype
+from app.retrieval.original_hpo_mapper import OriginalHPOMapperAdapter
 from app.schemas.retrieval import CandidateDisease
 
 
@@ -56,8 +57,8 @@ class RetrievalService:
         )
 
     @cached_property
-    def original_hpo_mapper(self) -> Doc2HPOMapper:
-        return Doc2HPOMapper(
+    def original_hpo_mapper(self) -> OriginalHPOMapperAdapter:
+        return OriginalHPOMapperAdapter(
             knowledge=self.knowledge,
             endpoint_url=self.settings.original_hpo_mapper_url,
             timeout_seconds=self.settings.doc2hpo_timeout_seconds,

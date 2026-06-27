@@ -1,5 +1,109 @@
 # RARE_DX_AI 개발 히스토리
 
+## 2026-06-27
+
+### Original HPO-Mapper adapter 실제 연동 경계 구현
+
+원본 `UoS-HGIG/HPO-Mapper`의 P1/P2/P3 프로토콜을 RARE_DX_AI의 clinical note-to-HPO extraction 단계에 붙일 수 있도록 전용 adapter를 추가했다.
+
+- `OriginalHPOMapperAdapter`를 추가했다.
+  - `protocol`, `top_k`, `threshold/min_sim`, `embed_model`, `llm.enabled/provider/chat_model`을 wrapper endpoint로 전달한다.
+  - 원본 repo의 CSV/JSON 출력에 가까운 `finding`, `region`, `hpo_id`, `hpo_term`, `matched_term`, `genes`, `score/similarity`, `flag` 필드를 내부 `ExtractedPhenotype`으로 변환한다.
+  - `HP_0001250`, `http://purl.obolibrary.org/obo/HP_0001250` 같은 ID 표현을 `HP:0001250`로 정규화한다.
+- `RetrievalService.original_hpo_mapper`가 generic Doc2HPO adapter 대신 전용 adapter를 사용하도록 변경했다.
+- README에 원본 HPO-Mapper wrapper endpoint의 요청/응답 계약을 추가했다.
+- 테스트를 추가했다.
+  - P2 스타일 row 파싱
+  - P3 스타일 nested result 파싱
+  - protocol payload 생성
+
+남은 한계:
+
+- 원본 HPO-Mapper repo 자체를 RARE_DX_AI 프로세스 안에 직접 import하지는 않는다.
+- 실제 실행은 별도 wrapper service가 필요하며, `.env`의 `RAREDX_ORIGINAL_HPO_MAPPER_URL`로 연결한다.
+- P2/P3의 LLM 동작 품질은 wrapper service와 선택한 LLM provider/model 설정에 의존한다.
+
+### Original HPO-Mapper FastAPI wrapper 구현
+
+원본 HPO-Mapper의 실행 방식을 RARE_DX_AI에서 호출 가능한 HTTP service로 감싸는 wrapper를 추가했다.
+
+- `app/original_hpo_mapper_wrapper.py`를 추가했다.
+  - `POST /map`: clinical note 또는 structured finding list를 HPO term 후보로 매핑한다.
+  - `GET /health`: SQLite embedding DB, gene map, HPO definition 로드 상태를 확인한다.
+- 원본 HPO-Mapper와 같은 핵심 입력 artifact를 사용한다.
+  - `hpo_synonym_embeddings(hpo_id, hpo_name, term, embedding)` SQLite table
+  - `hpo_gene(hpo_id, genes)` SQLite table
+  - 선택 사항: HPO JSON definition file
+- embedding 생성은 Ollama HTTP API의 `nomic-embed-text`를 사용한다.
+- P1/P2/P3 프로토콜을 wrapper 요청 단위로 받는다.
+  - P1: embedding similarity 기반 best match
+  - P2: LLM QC flag
+  - P3: LLM selection
+- OpenAI/Ollama LLM QC는 기존 `PhenotypeLLMSelector`를 재사용한다.
+- `.env.example`과 README에 wrapper 실행 환경변수를 추가했다.
+- 테스트를 추가했다.
+  - 작은 SQLite fixture 기반 P1 mapping
+  - `/health` 상태 확인
+
+실행 예:
+
+```bash
+uv run uvicorn app.original_hpo_mapper_wrapper:app --reload --port 9001
+```
+
+### Original HPO-Mapper 실데이터 기동 검증
+
+Hugging Face Space `UoS-HGIG/HPOmapper`에서 원본 wrapper 실행에 필요한 asset을 내려받아 로컬에서 기동 검증했다.
+
+- 다운로드 위치:
+  - `data/external/original_hpo_mapper/hp.json`
+  - `data/external/original_hpo_mapper/hpo_genes_with_synonyms.db`
+- 로드 결과:
+  - HPO synonym embedding row: 29,723
+  - HPO gene row: 11,536
+  - HPO definition: 19,651
+- Ollama embedding model:
+  - `nomic-embed-text`
+- 확인한 endpoint:
+  - `GET http://127.0.0.1:9001/health`
+  - `POST http://127.0.0.1:9001/map`
+  - `POST http://127.0.0.1:8010/api/retrieval/note/ic`
+- 샘플 clinical note:
+  - `The patient has seizure, global developmental delay, and microcephaly.`
+- Original HPO-Mapper wrapper 추출 결과:
+  - `HP:0001250` Seizure
+  - `HP:0001263` Global developmental delay
+  - `HP:0000252` Microcephaly
+- RARE_DX_AI end-to-end 확인:
+  - `hpo_mapper=original_hpo_mapper`
+  - query HPO terms가 위 세 항목으로 정상 전달됨
+  - IC ranking 후보가 정상 반환됨
+
+추가 조치:
+
+- broad HPO term의 gene list가 너무 커지는 문제를 확인했다.
+- wrapper 응답은 기본적으로 gene list를 50개로 제한하고 `gene_count`로 전체 개수를 보존하도록 변경했다.
+- 제한값은 `RAREDX_ORIGINAL_HPO_MAPPER_MAX_GENES`로 조정한다.
+- HPO 매핑 자체는 gene list 개수 제한의 영향을 받지 않는다.
+  - 매핑은 clinical text embedding과 HPO synonym embedding의 cosine similarity로 결정된다.
+  - gene list는 매핑 이후 HPO term에 붙는 evidence payload다.
+- 프론트 HPO extraction 설정에 `Gene preview` 버튼을 추가했다.
+  - 50
+  - 100
+  - 1000
+  - All
+
+보류된 UI 개선 계획:
+
+- `Gene preview`는 ranking 후보 개수(`Candidates Top 5/10/20`)와 역할이 다르지만, 둘 다 "표시 개수"처럼 보여 혼동될 수 있다.
+- 이 설정은 `Disease ranking` 블럭으로 옮기지 않고 `HPO extraction` 블럭 안에 유지한다.
+  - 이유: gene preview는 Original HPO-Mapper가 HPO term에 붙여 반환하는 gene evidence 표시량이므로, disease candidate ranking 수와 섞으면 파이프라인 이해를 방해한다.
+- 추후 UI 개선 시 다음 방향을 검토한다.
+  - `Gene preview` 명칭을 `HPO-gene evidence` 또는 `Gene evidence detail`로 변경한다.
+  - 기본값은 50으로 두고, `50 / 100 / 1000 / All`은 접힘/확장형 고급 옵션으로 둔다.
+  - 툴팁 또는 짧은 설명으로 "ranking 후보 개수에는 영향을 주지 않고, mapped HPO term별 gene evidence 표시량만 바꾼다"를 명시한다.
+  - `Candidates` 옵션에 `All`을 추가해서 gene preview와 연결하는 방식은 우선 채택하지 않는다.
+
 ## 2026-06-26
 
 ### 선택형 HPO mapper mode 구현

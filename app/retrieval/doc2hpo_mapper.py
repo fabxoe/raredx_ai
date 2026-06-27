@@ -33,10 +33,8 @@ class Doc2HPOMapper:
         if not self.endpoint_url:
             raise RuntimeError(f"{self.source} mapper is not configured.")
 
-        payload = {"clinical_note": clinical_note, "top_k": limit}
-        if options:
-            payload["options"] = options
-            payload.update(options)
+        mapper_options = options or {}
+        payload = self._build_payload(clinical_note, limit, mapper_options)
         request_body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             self.endpoint_url,
@@ -47,19 +45,48 @@ class Doc2HPOMapper:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            message = f"{self._display_name()} request failed: HTTP {exc.code}: {exc.reason}"
+            if detail:
+                message = f"{message}: {detail}"
+            raise RuntimeError(message) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"Doc2HPO mapper request failed: {exc}") from exc
+            raise RuntimeError(f"{self._display_name()} request failed: {exc}") from exc
         except json.JSONDecodeError as exc:
-            raise RuntimeError("Doc2HPO mapper returned invalid JSON") from exc
+            raise RuntimeError(f"{self._display_name()} returned invalid JSON") from exc
 
-        extracted = self._parse_response(data, limit, options or {})
-        llm_selector = self.llm_selector_factory(options or {}) if _use_llm(options) and self.llm_selector_factory else None
-        if _use_llm(options) and llm_selector:
-            protocol = str((options or {}).get("protocol") or "p2_qc")
+        extracted = self._parse_response(data, limit, mapper_options)
+        should_apply_llm = self._should_apply_local_llm(mapper_options)
+        llm_selector = self.llm_selector_factory(mapper_options) if should_apply_llm and self.llm_selector_factory else None
+        if should_apply_llm and llm_selector:
+            protocol = str(mapper_options.get("protocol") or "p2_qc")
             extracted = llm_selector.select(clinical_note, extracted, protocol=protocol)
-        elif _use_llm(options):
+        elif should_apply_llm:
             raise RuntimeError("LLM QC is requested but no LLM provider is configured.")
         return extracted
+
+    def _build_payload(
+        self,
+        clinical_note: str,
+        limit: int,
+        options: dict[str, str | int | float | bool],
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"clinical_note": clinical_note, "top_k": limit}
+        if options:
+            payload["options"] = options
+            payload.update(options)
+        return payload
+
+    def _should_apply_local_llm(self, options: dict[str, str | int | float | bool]) -> bool:
+        return _use_llm(options)
+
+    def _display_name(self) -> str:
+        if self.source == "original_hpo_mapper":
+            return "Original HPO-Mapper"
+        if self.source == "doc2hpo":
+            return "Doc2HPO mapper"
+        return f"{self.source} mapper"
 
     def _parse_response(
         self,

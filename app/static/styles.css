@@ -171,6 +171,7 @@ h3 { font-size: 14px; }
 .segmented-control.mapper-control { grid-template-columns: repeat(3, 1fr); }
 .mapper-options, .ranking-options { margin-top: 10px; }
 .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.option-wide { grid-column: 1 / -1; }
 .option-grid label, .option-boolean {
   display: flex;
   flex-direction: column;
@@ -228,6 +229,33 @@ h3 { font-size: 14px; }
   font-size: 10px;
   font-style: normal;
   font-weight: 600;
+}
+.gene-preview-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.button-choice-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  padding: 3px;
+  border-radius: 6px;
+  background: #edf0ee;
+}
+.button-choice {
+  min-height: 31px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.button-choice.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
 }
 .mapper-warning {
   margin-bottom: 8px;

@@ -319,6 +319,23 @@ function optionField(className, ownerId, option, optionStore) {
   const current = optionStore[ownerId]?.[option.key] ?? option.default;
   const dataAttrs = `data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
   const attrs = `class="${escapeHtml(className)}" ${dataAttrs}`;
+  if (option.key === "max_genes") {
+    return `
+      <div class="option-wide gene-preview-option">
+        <span class="option-label-text">${escapeHtml(option.label)}</span>
+        <div class="button-choice-group" role="group" aria-label="${escapeHtml(option.label)}">
+          ${option.choices.map((choice) => `
+            <button
+              type="button"
+              class="${escapeHtml(className)} button-choice ${String(choice) === String(current) ? "active" : ""}"
+              ${dataAttrs}
+              data-value="${escapeHtml(choice)}"
+            >${choice === "all" ? "All" : escapeHtml(choice)}</button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
   if (option.type === "boolean") {
     const disabled = option.key === "use_ancestor_terms";
     return `
@@ -345,12 +362,18 @@ function optionLabelClass(key) {
 
 function bindOptionControls(className, optionStore) {
   $$(`.${className}`).forEach((control) => {
-    const eventName = control.classList.contains("option-toggle") ? "click" : "change";
+    const eventName = control.classList.contains("option-toggle") || control.classList.contains("button-choice") ? "click" : "change";
     control.addEventListener(eventName, () => {
       if (control.disabled) return;
       const ownerOptions = optionStore[control.dataset.owner] || {};
       ownerOptions[control.dataset.key] = readOptionValue(control);
       optionStore[control.dataset.owner] = ownerOptions;
+      if (control.classList.contains("button-choice")) {
+        $$(`.${className}.button-choice`).forEach((button) => {
+          const sameGroup = button.dataset.owner === control.dataset.owner && button.dataset.key === control.dataset.key;
+          if (sameGroup) button.classList.toggle("active", button === control);
+        });
+      }
       if (control.classList.contains("option-toggle")) {
         control.classList.toggle("active", ownerOptions[control.dataset.key]);
         control.dataset.value = ownerOptions[control.dataset.key] ? "true" : "false";
@@ -364,6 +387,7 @@ function bindOptionControls(className, optionStore) {
 
 function readOptionValue(control) {
   if (control.classList.contains("option-toggle")) return control.dataset.value !== "true";
+  if (control.classList.contains("button-choice")) return control.dataset.value;
   if (control.type === "number") return Number(control.value);
   return control.value;
 }

@@ -244,7 +244,65 @@ RAREDX_ORIGINAL_HPO_MAPPER_URL=http://127.0.0.1:9001/map
 RAREDX_DOC2HPO_TIMEOUT_SECONDS=20
 ```
 
-외부 endpoint는 `POST` JSON 요청을 받아 HPO 후보 목록을 JSON으로 반환해야 한다. 지원하는 응답 key는 `extracted_phenotypes`, `hpo_terms`, `matches`, `results`, `mapped_terms` 중 하나다.
+외부 endpoint는 `POST` JSON 요청을 받아 HPO 후보 목록을 JSON으로 반환해야 한다. `doc2hpo` 모드가 지원하는 응답 key는 `extracted_phenotypes`, `hpo_terms`, `matches`, `results`, `mapped_terms` 중 하나다.
+
+`original_hpo_mapper` 모드는 원본 `UoS-HGIG/HPO-Mapper`의 P1/P2/P3 개념을 보존하는 전용 adapter를 사용한다. RARE_DX_AI는 wrapper endpoint로 다음 형태의 JSON을 보낸다.
+
+```json
+{
+  "clinical_note": "The patient has seizure and developmental delay.",
+  "protocol": "p1",
+  "top_k": 10,
+  "max_hpo_terms": 30,
+  "threshold": 0.76,
+  "min_sim": 0.76,
+  "embed_model": "nomic-embed-text",
+  "embedding_model": "nomic-embed-text",
+  "llm": {
+    "enabled": false,
+    "provider": "off",
+    "chat_model": ""
+  },
+  "return_candidates": true
+}
+```
+
+wrapper endpoint는 원본 HPO-Mapper CSV/JSON 결과를 다음 key 중 하나로 감싸서 반환하면 된다: `mapped_rows`, `mapped_terms`, `mapped`, `matches`, `results`, `predictions`, `extracted_phenotypes`, `hpo_terms`, `data`. 각 row는 원본 repo 출력에 가까운 `finding`, `region`, `hpo_id`, `hpo_term`, `matched_term`, `genes`, `score` 또는 `similarity` 필드를 사용하면 된다. `HP_0001250` 또는 `http://purl.obolibrary.org/obo/HP_0001250` 형태도 내부에서 `HP:0001250`로 정규화한다.
+
+원본 HPO-Mapper를 로컬 FastAPI wrapper로 띄우려면 별도 터미널에서 다음처럼 실행한다. 큰 SQLite embedding DB와 HPO JSON은 git에 넣지 않고 로컬 경로만 `.env`에 지정한다.
+
+원본 asset은 Hugging Face Space `UoS-HGIG/HPOmapper`에서 받을 수 있다.
+
+```bash
+mkdir -p data/external/original_hpo_mapper
+curl -L --fail --continue-at - \
+  --output data/external/original_hpo_mapper/hp.json \
+  https://huggingface.co/spaces/UoS-HGIG/HPOmapper/resolve/main/hp.json
+curl -L --fail --continue-at - \
+  --output data/external/original_hpo_mapper/hpo_genes_with_synonyms.db \
+  https://huggingface.co/spaces/UoS-HGIG/HPOmapper/resolve/main/hpo_genes_with_synonyms.db
+```
+
+```text
+RAREDX_ORIGINAL_HPO_MAPPER_URL=http://127.0.0.1:9001/map
+RAREDX_ORIGINAL_HPO_MAPPER_DB_PATH=/path/to/hpo_genes_with_synonyms.db
+RAREDX_ORIGINAL_HPO_MAPPER_HPO_JSON=/path/to/hp.json
+RAREDX_ORIGINAL_HPO_MAPPER_MAX_GENES=50
+RAREDX_OLLAMA_URL=http://localhost:11434
+```
+
+`RAREDX_ORIGINAL_HPO_MAPPER_MAX_GENES`와 요청 option `max_genes`는 HPO 매핑 계산에 사용되지 않는다. 매핑은 clinical text embedding과 HPO synonym embedding의 cosine similarity로 결정되고, gene list는 매핑된 HPO term에 붙는 evidence payload다. 프론트 안정성을 위해 기본 preview는 50개이며, Original mapper option에서 50/100/1000/All로 조정할 수 있다. `gene_count`에는 전체 연결 gene 수가 보존된다.
+
+```bash
+ollama pull nomic-embed-text
+uv run uvicorn app.original_hpo_mapper_wrapper:app --reload --port 9001
+```
+
+wrapper 상태 확인:
+
+```bash
+curl http://127.0.0.1:9001/health
+```
 
 프론트엔드는 `/api/hpo-mappers`에서 mapper 목록과 설정 가능한 option을 받아 UI를 렌더링한다. Original HPO-Mapper adapter는 protocol, LLM on/off, provider, top-k, threshold, model 설정을 요청별 option으로 전달한다.
 
