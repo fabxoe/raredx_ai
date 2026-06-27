@@ -487,3 +487,30 @@ Clinical note 기반 retrieval:
 - 왜 변경했는지
 - 실행한 명령어와 테스트 결과
 - 남은 한계 또는 다음 액션
+
+---
+
+## 2026-06-28 업데이트
+
+### Cloudflare Access 진입 흐름 정리
+
+- 로그아웃 버튼을 앱 헤더에 직접 붙였던 실험은 뒤로 가기 시 이전 화면이 복원되어 사용자에게 서비스 오류처럼 보일 수 있어 롤백했다.
+- `www.cromtind.uk` 요청에서 Cloudflare Access 인증 헤더가 없으면 `app/static/login.html`을 반환하도록 했다.
+- Cloudflare Access 인증 헤더가 있으면 기존 RARE_DX_AI 메인 화면을 바로 반환한다.
+- 로컬 개발 환경(`localhost`, `127.0.0.1`)은 인증 헤더 없이도 기존처럼 메인 화면이 열리게 유지했다.
+- `api.cromtind.uk`는 기존처럼 `/docs`로 redirect한다.
+
+검증:
+
+- `uv run pytest`
+  - 결과: `24 passed`
+- FastAPI TestClient로 확인:
+  - `www.cromtind.uk` + Access 헤더 없음: 로그인 페이지 반환
+  - `www.cromtind.uk` + `cf-access-authenticated-user-email` 헤더 있음: 메인 페이지 반환
+  - `127.0.0.1:8010`: 메인 페이지 반환
+  - `api.cromtind.uk`: `/docs` redirect
+
+다음 액션:
+
+- Cloudflare Access에서 `www.cromtind.uk` 보호 정책을 팀원 이메일 기준으로 정리한다.
+- 이후 `/logout` 중간 페이지를 추가해 로그아웃 후 로그인 페이지로 자연스럽게 이동시키는 흐름을 구현한다.

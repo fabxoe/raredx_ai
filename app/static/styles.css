@@ -31,6 +31,7 @@ body {
 
 button, input, textarea, select { font: inherit; letter-spacing: 0; }
 button { cursor: pointer; }
+a { color: inherit; }
 
 .app-header {
   height: 64px;
@@ -86,6 +87,68 @@ h1 { font-size: 16px; line-height: 1.2; }
 }
 .icon-link svg, .icon-button svg { width: 17px; height: 17px; }
 .icon-link:hover, .icon-button:hover { background: var(--surface-muted); border-color: var(--border-strong); }
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-shell {
+  width: min(100%, 460px);
+}
+
+.login-panel {
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.login-copy {
+  margin-top: 24px;
+}
+
+.login-copy h2 {
+  margin-bottom: 10px;
+  font-size: 24px;
+}
+
+.login-copy p,
+.login-note {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.login-action {
+  min-height: 46px;
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.login-action:hover {
+  background: #126b41;
+}
+
+.login-note {
+  margin-top: 16px;
+  font-size: 12px;
+}
 
 .workspace {
   height: calc(100vh - 64px);

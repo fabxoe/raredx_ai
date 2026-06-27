@@ -9,6 +9,18 @@ from app.api.hpo_mappers import router as hpo_mappers_router
 from app.api.retrieval import router as retrieval_router
 
 
+ACCESS_PROTECTED_HOSTS = {"www.cromtind.uk"}
+ACCESS_USER_HEADER = "cf-access-authenticated-user-email"
+
+
+def _request_host(request: Request) -> str:
+    return request.headers.get("host", "").split(":", maxsplit=1)[0].lower()
+
+
+def _is_access_authenticated(request: Request) -> bool:
+    return bool(request.headers.get(ACCESS_USER_HEADER))
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="RARE_DX_AI",
@@ -23,9 +35,11 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def frontend(request: Request) -> Response:
-        host = request.headers.get("host", "").split(":", maxsplit=1)[0].lower()
+        host = _request_host(request)
         if host == "api.cromtind.uk":
             return RedirectResponse(url="/docs")
+        if host in ACCESS_PROTECTED_HOSTS and not _is_access_authenticated(request):
+            return FileResponse(static_dir / "login.html")
         return FileResponse(static_dir / "index.html")
 
     return app
