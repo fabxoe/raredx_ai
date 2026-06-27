@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.graph import router as graph_router
@@ -22,7 +22,10 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", include_in_schema=False)
-    async def frontend() -> FileResponse:
+    async def frontend(request: Request) -> Response:
+        host = request.headers.get("host", "").split(":", maxsplit=1)[0].lower()
+        if host == "api.cromtind.uk":
+            return RedirectResponse(url="/docs")
         return FileResponse(static_dir / "index.html")
 
     return app
