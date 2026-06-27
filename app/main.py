@@ -42,6 +42,10 @@ def create_app() -> FastAPI:
             return FileResponse(static_dir / "login.html")
         return FileResponse(static_dir / "index.html")
 
+    @app.get("/logout", include_in_schema=False)
+    async def logout_page() -> Response:
+        return FileResponse(static_dir / "logout.html")
+
     return app
 
 

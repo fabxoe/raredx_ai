@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RARE_DX_AI Logout</title>
+  <link rel="stylesheet" href="/static/styles.css?v=logout-v1">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-panel logout-panel" aria-labelledby="logout-title">
+      <div class="brand-block login-brand">
+        <div class="brand-mark" aria-hidden="true">RX</div>
+        <div>
+          <h1>RARE_DX_AI</h1>
+          <p>Rare disease candidate prioritization</p>
+        </div>
+      </div>
+
+      <div class="login-copy">
+        <span class="eyebrow">Team access</span>
+        <h2 id="logout-title">로그아웃 중입니다</h2>
+        <p id="logout-message">
+          Cloudflare Access 세션을 종료하고 있습니다. 잠시 후 로그인 화면으로 이동합니다.
+        </p>
+      </div>
+
+      <div class="logout-spinner" aria-hidden="true"></div>
+
+      <a class="login-action logout-fallback" href="/" hidden>
+        로그인 화면으로 이동
+      </a>
+    </section>
+  </main>
+
+  <script>
+    const fallback = document.querySelector(".logout-fallback");
+    const message = document.querySelector("#logout-message");
+
+    async function logout() {
+      try {
+        await fetch("/cdn-cgi/access/logout", {
+          cache: "no-store",
+          credentials: "include",
+          redirect: "manual",
+        });
+      } catch {
+        message.textContent = "세션 종료 요청을 보냈습니다. 로그인 화면으로 이동합니다.";
+      } finally {
+        setTimeout(() => {
+          window.location.replace("/");
+        }, 1800);
+        setTimeout(() => {
+          fallback.hidden = false;
+        }, 3500);
+      }
+    }
+
+    logout();
+  </script>
+</body>
+</html>
