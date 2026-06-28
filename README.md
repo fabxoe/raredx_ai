@@ -161,7 +161,8 @@ uv run scripts/build_faiss.py --backend custom_sentence_transformer_faiss --mode
 HPO ontology graph embedding + FAISS 비교군은 SapBERT 모델 다운로드 없이 생성할 수 있다.
 
 ```bash
-uv run scripts/build_faiss.py --backend hpo_graph_embedding_faiss
+uv run scripts/build_faiss.py --backend hpo_deepwalk_faiss
+uv run scripts/build_faiss.py --backend hpo_node2vec_faiss
 ```
 
 8. Neo4j graph 적재
@@ -337,9 +338,9 @@ Ranking method capability는 다음 endpoint에서 확인할 수 있다.
 curl http://127.0.0.1:8010/api/retrieval/ranking-methods
 ```
 
-현재 disease embedding backend는 `sapbert_faiss`, `custom_sentence_transformer_faiss`, `hpo_graph_embedding_faiss`를 지원한다.
+현재 disease embedding backend는 `sapbert_faiss`, `custom_sentence_transformer_faiss`, `hpo_deepwalk_faiss`, `hpo_node2vec_faiss`를 지원한다.
 `sapbert_faiss`는 SapBERT 고정 비교군이고, `custom_sentence_transformer_faiss`는 모델명을 직접 입력해 sentence-transformer 계열 embedding retrieval을 비교하는 실험용 backend다.
-`hpo_graph_embedding_faiss`는 `hp.obo`의 HPO `IS_A` ontology graph만 사용해 HPO node vector를 만든 뒤 FAISS로 disease profile을 검색하는 graph embedding backend다.
+`hpo_deepwalk_faiss`와 `hpo_node2vec_faiss`는 `hp.obo`의 HPO `IS_A` ontology graph만 사용해 HPO node vector를 만든 뒤 FAISS로 disease profile을 검색하는 graph embedding backend다.
 Neo4j에 적재된 disease-gene-phenotype 전체 knowledge graph가 아니라, HPO term 사이의 ontology DAG를 사용한다.
 프론트는 `/api/retrieval/ranking-methods` capability에 내려오는 선택지를 자동으로 렌더링한다.
 
@@ -348,7 +349,8 @@ Graph evidence mode와 HPO graph embedding backend는 다른 층이다.
 | 항목 | 위치 | 입력 | 목적 |
 |---|---|---|---|
 | `local_overlap`, `frequency_weighted_graph`, `gene_path`, `source_confidence_graph` | Graph evidence / Hybrid component | Patient HPO와 disease/gene/annotation evidence | 후보 disease의 graph evidence score 계산 |
-| `hpo_graph_embedding_faiss` | Disease embedding backend | HPO ontology `IS_A` graph | patient/disease vector similarity search |
+| `hpo_deepwalk_faiss` | Disease embedding backend | HPO ontology `IS_A` graph의 uniform random walk | patient/disease vector similarity search |
+| `hpo_node2vec_faiss` | Disease embedding backend | HPO ontology `IS_A` graph의 biased random walk | patient/disease vector similarity search |
 
 LLM QC/selection은 mapper가 만든 HPO 후보를 검수하는 후처리 단계다. 새 HPO term을 생성하지 않고, 제공된 후보 HPO ID 중 유지할 항목만 고른다. OpenAI API를 우선 사용할 수 있고, 로컬 실험은 Ollama로 대체할 수 있다.
 

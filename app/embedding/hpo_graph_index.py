@@ -23,6 +23,9 @@ class HPOGraphEmbeddingIndex:
         walks_per_node: int = 8,
         window_size: int = 4,
         seed: int = 13,
+        walk_strategy: str = "deepwalk",
+        return_param: float = 1.0,
+        in_out_param: float = 0.5,
     ) -> None:
         self.knowledge = knowledge
         self.dimensions = dimensions
@@ -30,6 +33,9 @@ class HPOGraphEmbeddingIndex:
         self.walks_per_node = walks_per_node
         self.window_size = window_size
         self.seed = seed
+        self.walk_strategy = walk_strategy
+        self.return_param = return_param
+        self.in_out_param = in_out_param
         self._index: object | None = None
         self._disease_ids: list[str] = []
         self._vectors: np.ndarray | None = None
@@ -150,7 +156,15 @@ class HPOGraphEmbeddingIndex:
         rng = random.Random(self.seed)
         for hpo_id in hpo_ids:
             for _ in range(self.walks_per_node):
-                walk = _random_walk(hpo_id, adjacency, self.walk_length, rng)
+                walk = _random_walk(
+                    hpo_id,
+                    adjacency,
+                    self.walk_length,
+                    rng,
+                    strategy=self.walk_strategy,
+                    return_param=self.return_param,
+                    in_out_param=self.in_out_param,
+                )
                 _add_walk_context(vectors, walk, self.window_size, self.dimensions, context_vector_cache)
         return {
             hpo_id: _normalize(vector if np.linalg.norm(vector) > 0 else _hashed_context_vector(hpo_id, self.dimensions, context_vector_cache))
@@ -169,16 +183,72 @@ def _hpo_adjacency(knowledge: KnowledgeIndex) -> dict[str, list[str]]:
     return {hpo_id: sorted(neighbors) for hpo_id, neighbors in adjacency.items()}
 
 
-def _random_walk(start: str, adjacency: dict[str, list[str]], walk_length: int, rng: random.Random) -> list[str]:
+def _random_walk(
+    start: str,
+    adjacency: dict[str, list[str]],
+    walk_length: int,
+    rng: random.Random,
+    *,
+    strategy: str,
+    return_param: float,
+    in_out_param: float,
+) -> list[str]:
     walk = [start]
     current = start
     for _ in range(max(walk_length - 1, 0)):
         neighbors = adjacency.get(current) or []
         if not neighbors:
             break
-        current = rng.choice(neighbors)
+        if strategy == "node2vec" and len(walk) > 1:
+            current = _node2vec_next_node(
+                previous=walk[-2],
+                current=current,
+                neighbors=neighbors,
+                adjacency=adjacency,
+                rng=rng,
+                return_param=return_param,
+                in_out_param=in_out_param,
+            )
+        else:
+            current = rng.choice(neighbors)
         walk.append(current)
     return walk
+
+
+def _node2vec_next_node(
+    *,
+    previous: str,
+    current: str,
+    neighbors: list[str],
+    adjacency: dict[str, list[str]],
+    rng: random.Random,
+    return_param: float,
+    in_out_param: float,
+) -> str:
+    previous_neighbors = set(adjacency.get(previous) or [])
+    weights: list[float] = []
+    for neighbor in neighbors:
+        if neighbor == previous:
+            weight = 1.0 / max(return_param, 1e-9)
+        elif neighbor in previous_neighbors:
+            weight = 1.0
+        else:
+            weight = 1.0 / max(in_out_param, 1e-9)
+        weights.append(weight)
+    return _weighted_choice(neighbors, weights, rng)
+
+
+def _weighted_choice(items: list[str], weights: list[float], rng: random.Random) -> str:
+    total = sum(weights)
+    if total <= 0:
+        return rng.choice(items)
+    threshold = rng.random() * total
+    cumulative = 0.0
+    for item, weight in zip(items, weights, strict=True):
+        cumulative += weight
+        if cumulative >= threshold:
+            return item
+    return items[-1]
 
 
 def _add_walk_context(

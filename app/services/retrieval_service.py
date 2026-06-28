@@ -4,8 +4,9 @@ from pathlib import Path
 from app.config import Settings
 from app.embedding.backends import (
     DEFAULT_EMBEDDING_BACKEND,
-    HPO_GRAPH_EMBEDDING_BACKEND,
+    hpo_graph_strategy_for_backend,
     index_dir_name,
+    is_hpo_graph_embedding_backend,
     resolve_embedding_model,
     supported_embedding_backend_keys,
 )
@@ -204,8 +205,8 @@ class RetrievalService:
         backend: str,
         model_name: str,
     ) -> DiseaseEmbeddingIndex | HPOGraphEmbeddingIndex:
-        if backend == HPO_GRAPH_EMBEDDING_BACKEND:
-            return HPOGraphEmbeddingIndex(self.knowledge)
+        if is_hpo_graph_embedding_backend(backend):
+            return HPOGraphEmbeddingIndex(self.knowledge, walk_strategy=hpo_graph_strategy_for_backend(backend))
         return DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(model_name))
 
     def _graph_evidence_rank(

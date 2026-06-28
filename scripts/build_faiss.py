@@ -4,7 +4,13 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.embedding.backends import DEFAULT_EMBEDDING_BACKEND, HPO_GRAPH_EMBEDDING_BACKEND, index_dir_name, resolve_embedding_model
+from app.embedding.backends import (
+    DEFAULT_EMBEDDING_BACKEND,
+    hpo_graph_strategy_for_backend,
+    index_dir_name,
+    is_hpo_graph_embedding_backend,
+    resolve_embedding_model,
+)
 from app.embedding.biomedical import BiomedicalEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
 from app.embedding.hpo_graph_index import HPOGraphEmbeddingIndex
@@ -21,8 +27,8 @@ def main() -> None:
 
     model_name = resolve_embedding_model(args.backend, args.model)
     knowledge = KnowledgeIndex(load_processed_knowledge_base(args.processed_dir))
-    if args.backend == HPO_GRAPH_EMBEDDING_BACKEND:
-        index = HPOGraphEmbeddingIndex(knowledge)
+    if is_hpo_graph_embedding_backend(args.backend):
+        index = HPOGraphEmbeddingIndex(knowledge, walk_strategy=hpo_graph_strategy_for_backend(args.backend))
     else:
         index = DiseaseEmbeddingIndex(knowledge, BiomedicalEmbedder(model_name))
     index_dir = args.processed_dir / "faiss" / index_dir_name(args.backend, model_name)
@@ -35,7 +41,8 @@ def main() -> None:
             "index": "IndexFlatIP",
             "normalized_vectors": True,
             "similarity": "cosine_via_inner_product",
-            "embedding_source": "hpo_ontology_graph" if args.backend == HPO_GRAPH_EMBEDDING_BACKEND else "hpo_text",
+            "embedding_source": "hpo_ontology_graph" if is_hpo_graph_embedding_backend(args.backend) else "hpo_text",
+            "walk_strategy": hpo_graph_strategy_for_backend(args.backend) if is_hpo_graph_embedding_backend(args.backend) else None,
         },
     )
     print(f"FAISS index written to {index_dir}")

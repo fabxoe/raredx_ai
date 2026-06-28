@@ -359,8 +359,11 @@ function optionField(className, ownerId, option, optionStore) {
     if (backend === "sapbert_faiss") {
       return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="SapBERT PubMedBERT" disabled></label>`;
     }
-    if (backend === "hpo_graph_embedding_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO ontology random-walk" disabled></label>`;
+    if (backend === "hpo_deepwalk_faiss" || backend === "hpo_graph_embedding_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO DeepWalk random-walk" disabled></label>`;
+    }
+    if (backend === "hpo_node2vec_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO Node2Vec biased walk" disabled></label>`;
     }
   }
   const inputType = option.type === "number" ? "number" : "text";
@@ -376,7 +379,9 @@ function optionChoiceLabel(key, value) {
     embedding_backend: {
       sapbert_faiss: "SapBERT · FAISS",
       custom_sentence_transformer_faiss: "Custom ST · FAISS",
-      hpo_graph_embedding_faiss: "HPO graph · FAISS",
+      hpo_deepwalk_faiss: "HPO DeepWalk · FAISS",
+      hpo_node2vec_faiss: "HPO Node2Vec · FAISS",
+      hpo_graph_embedding_faiss: "HPO DeepWalk · FAISS",
     },
     graph_evidence_mode: {
       local_overlap: "Local overlap",

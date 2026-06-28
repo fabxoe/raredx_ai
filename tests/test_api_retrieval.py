@@ -178,7 +178,7 @@ def test_ranking_method_capabilities_endpoint() -> None:
     assert {"frequency_weighted_graph", "gene_path", "source_confidence_graph"}.issubset(set(graph_mode["choices"]))
     embedding = next(item for item in body if item["id"] == "embedding")
     embedding_backend = next(item for item in embedding["options"] if item["key"] == "embedding_backend")
-    assert {"sapbert_faiss", "custom_sentence_transformer_faiss", "hpo_graph_embedding_faiss"}.issubset(
+    assert {"sapbert_faiss", "custom_sentence_transformer_faiss", "hpo_deepwalk_faiss", "hpo_node2vec_faiss"}.issubset(
         set(embedding_backend["choices"])
     )
     hybrid = next(item for item in body if item["id"] == "hybrid")
@@ -236,7 +236,7 @@ def test_embedding_retrieval_rejects_custom_backend_without_model(tmp_path: Path
     assert "embedding_model is required" in response.json()["detail"]
 
 
-def test_embedding_retrieval_supports_hpo_graph_backend(tmp_path: Path, monkeypatch) -> None:
+def test_embedding_retrieval_supports_hpo_graph_backends(tmp_path: Path, monkeypatch) -> None:
     kb = load_knowledge_base(
         hpo_obo_path=FIXTURES / "hp.obo",
         phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
@@ -248,14 +248,15 @@ def test_embedding_retrieval_supports_hpo_graph_backend(tmp_path: Path, monkeypa
     get_retrieval_service.cache_clear()
 
     client = TestClient(create_app())
-    response = client.post(
-        "/api/retrieval/embedding",
-        json={
-            "hpo_terms": ["HP:0001250"],
-            "top_k": 1,
-            "ranking_options": {"embedding_backend": "hpo_graph_embedding_faiss"},
-        },
-    )
+    for backend in ("hpo_deepwalk_faiss", "hpo_node2vec_faiss", "hpo_graph_embedding_faiss"):
+        response = client.post(
+            "/api/retrieval/embedding",
+            json={
+                "hpo_terms": ["HP:0001250"],
+                "top_k": 1,
+                "ranking_options": {"embedding_backend": backend},
+            },
+        )
 
-    assert response.status_code == 200, response.json()
-    assert response.json()["candidates"]
+        assert response.status_code == 200, response.json()
+        assert response.json()["candidates"]
