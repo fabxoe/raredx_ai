@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="cache-control" content="no-store">
   <title>RARE_DX_AI Logout</title>
-  <link rel="stylesheet" href="/static/styles.css?v=auth-v2">
+  <link rel="stylesheet" href="/static/styles.css?v=auth-v3">
 </head>
 <body class="login-page">
   <main class="login-shell">
@@ -22,7 +23,8 @@
         <span class="eyebrow">Team access</span>
         <h2 id="logout-title">로그아웃 중입니다</h2>
         <p id="logout-message">
-          Cloudflare Access 세션을 종료하고 있습니다. 잠시 후 로그인 화면으로 이동합니다.
+          Cloudflare Access 세션을 종료하고 있습니다. 약 <strong id="logout-countdown">32</strong>초 후
+          로그인 화면으로 이동합니다.
         </p>
       </div>
 
@@ -36,7 +38,20 @@
 
   <script>
     const fallback = document.querySelector(".logout-fallback");
+    const countdown = document.querySelector("#logout-countdown");
     const message = document.querySelector("#logout-message");
+    const redirectDelayMs = 32000;
+    let remainingSeconds = Math.ceil(redirectDelayMs / 1000);
+
+    const countdownTimer = setInterval(() => {
+      remainingSeconds -= 1;
+      if (countdown) {
+        countdown.textContent = String(Math.max(remainingSeconds, 0));
+      }
+      if (remainingSeconds <= 0) {
+        clearInterval(countdownTimer);
+      }
+    }, 1000);
 
     async function logout() {
       try {
@@ -50,10 +65,10 @@
       } finally {
         setTimeout(() => {
           window.location.replace("/");
-        }, 1800);
+        }, redirectDelayMs);
         setTimeout(() => {
           fallback.hidden = false;
-        }, 3500);
+        }, 8000);
       }
     }
 
