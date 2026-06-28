@@ -51,6 +51,61 @@ def test_graph_retrieval_endpoint(tmp_path: Path, monkeypatch) -> None:
     assert body["candidates"][0]["graph_paths"]
 
 
+def test_graph_retrieval_supports_frequency_weighted_mode(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/graph",
+        json={
+            "hpo_terms": ["HP:0001250", "HP:0000252"],
+            "top_k": 2,
+            "ranking_options": {"graph_evidence_mode": "frequency_weighted_graph"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    scores = {item["disease_id"]: item["score_components"]["graph_score"] for item in body["candidates"]}
+    assert scores["OMIM:312750"] == 0.45
+    assert scores["OMIM:999999"] == 0.375
+
+
+def test_graph_retrieval_supports_gene_path_mode(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/graph",
+        json={
+            "hpo_terms": ["HP:0001250"],
+            "top_k": 1,
+            "ranking_options": {"graph_evidence_mode": "gene_path"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["candidates"][0]["disease_id"] == "OMIM:312750"
+    assert body["candidates"][0]["score_components"]["graph_score"] == 1.0
+
+
 def test_ic_retrieval_endpoint_rejects_unknown_hpo(tmp_path: Path, monkeypatch) -> None:
     kb = load_knowledge_base(
         hpo_obo_path=FIXTURES / "hp.obo",
@@ -119,6 +174,8 @@ def test_ranking_method_capabilities_endpoint() -> None:
     graph = next(item for item in body if item["id"] == "graph")
     graph_option_keys = {item["key"] for item in graph["options"]}
     assert graph_option_keys == {"graph_evidence_mode"}
+    graph_mode = next(item for item in graph["options"] if item["key"] == "graph_evidence_mode")
+    assert {"frequency_weighted_graph", "gene_path", "source_confidence_graph"}.issubset(set(graph_mode["choices"]))
     hybrid = next(item for item in body if item["id"] == "hybrid")
     option_keys = {item["key"] for item in hybrid["options"]}
     assert {"embedding_backend", "ic_weight", "embedding_weight", "graph_weight"}.issubset(option_keys)

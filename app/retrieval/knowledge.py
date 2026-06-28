@@ -59,6 +59,14 @@ class KnowledgeIndex:
         return dict(mapping)
 
     @cached_property
+    def disease_gene_phenotypes(self) -> dict[str, dict[str, set[str]]]:
+        mapping: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+        for annotation in self.kb.gene_phenotypes:
+            if annotation.disease_id:
+                mapping[annotation.disease_id][annotation.hpo_id].add(annotation.gene_symbol)
+        return {disease_id: dict(hpo_map) for disease_id, hpo_map in mapping.items()}
+
+    @cached_property
     def gene_phenotypes(self) -> dict[str, list[GenePhenotypeAnnotation]]:
         mapping: dict[str, list[GenePhenotypeAnnotation]] = defaultdict(list)
         for annotation in self.kb.gene_phenotypes:
@@ -72,4 +80,3 @@ class KnowledgeIndex:
     def get_phenotype_name(self, hpo_id: str) -> str | None:
         term = self.phenotypes.get(hpo_id)
         return term.name if term else None
-

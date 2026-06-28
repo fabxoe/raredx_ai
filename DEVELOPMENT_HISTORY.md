@@ -535,3 +535,32 @@ Clinical note 기반 retrieval:
 
 - UI에서는 `IC | Embedding | Hybrid` 중심 구조를 유지하고, graph는 Hybrid 내부 evidence mode로 정리할지 결정한다.
 - 우선 구현 후보는 `frequency_weighted_graph`로 둔다.
+
+---
+
+## 2026-06-28 업데이트
+
+### Graph evidence scoring mode 구현
+
+- graph evidence mode를 `local_overlap` 단일 구조에서 다음 선택지로 확장했다.
+  - `local_overlap`
+  - `frequency_weighted_graph`
+  - `gene_path`
+  - `source_confidence_graph`
+- `frequency_weighted_graph`는 `phenotype.hpoa`에서 온 disease-HPO frequency를 정규화해 graph score에 반영한다.
+- `gene_path`는 disease-gene-phenotype 연결이 있는 matched HPO를 더 높게 평가한다.
+- `source_confidence_graph`는 annotation evidence/source를 기반으로 graph 근거 신뢰도를 보정한다.
+- `ontology_path_graph`는 HPO semantic similarity 설계가 더 필요하므로 아직 구현/노출하지 않았다.
+- `Hybrid` ranking에서도 `graph_evidence_mode` 옵션이 실제 graph candidate scoring에 반영되도록 수정했다.
+
+검증:
+
+- `uv run pytest tests/test_api_retrieval.py`
+  - 결과: `10 passed`
+- `uv run pytest`
+  - 결과: `27 passed`
+
+다음 액션:
+
+- UI에서 `Graph only` 탭을 계속 노출할지, 아니면 graph를 Hybrid 내부 evidence mode로만 둘지 결정한다.
+- `frequency_weighted_graph`와 `gene_path`의 score 분포를 실제 HPO 전체 데이터와 RareArena sample에서 비교한다.

@@ -140,9 +140,10 @@ class RetrievalService:
         top_k: int,
         options: dict[str, str | int | float | bool] | None = None,
     ) -> list[CandidateDisease]:
-        _validate_graph_options(options or {})
+        ranking_options = options or {}
+        _validate_graph_options(ranking_options)
         self._validate_hpo_terms(hpo_terms)
-        return self._local_graph_overlap(hpo_terms, top_k)
+        return self._graph_evidence_rank(hpo_terms, top_k, ranking_options)
 
     def rank_hybrid(
         self,
@@ -152,10 +153,11 @@ class RetrievalService:
     ) -> list[CandidateDisease]:
         ranking_options = options or {}
         _validate_embedding_options(ranking_options)
+        _validate_graph_options(ranking_options)
         self._validate_hpo_terms(hpo_terms)
         ic_candidates = self.rank_ic(hpo_terms, max(top_k * 3, 30), options=ranking_options)
         embedding_candidates = self.rank_embedding(hpo_terms, max(top_k * 3, 30), options=ranking_options)
-        graph_candidates = self._local_graph_overlap(hpo_terms, max(top_k * 3, 30))
+        graph_candidates = self._graph_evidence_rank(hpo_terms, max(top_k * 3, 30), ranking_options)
         reranker = self._reranker_for_options(ranking_options)
         return reranker.rerank(ic_candidates, embedding_candidates, graph_candidates, top_k)
 
@@ -168,18 +170,65 @@ class RetrievalService:
             graph_weight=_float_option(options, "graph_weight", self.settings.graph_weight),
         )
 
-    def _local_graph_overlap(self, hpo_terms: list[str], top_k: int) -> list[CandidateDisease]:
-        candidates = self.ic_ranker.rank(hpo_terms, top_k)
+    def _graph_evidence_rank(
+        self,
+        hpo_terms: list[str],
+        top_k: int,
+        options: dict[str, str | int | float | bool],
+    ) -> list[CandidateDisease]:
+        mode = str(options.get("graph_evidence_mode") or "local_overlap")
+        candidates = self.ic_ranker.rank(hpo_terms, max(top_k, 100))
         query_size = len(set(hpo_terms)) or 1
         for candidate in candidates:
-            graph_score = len(candidate.matched_phenotypes) / query_size
+            graph_score = self._graph_evidence_score(candidate, hpo_terms, mode)
             candidate.score = graph_score
             candidate.score_components.graph_score = graph_score
             candidate.graph_paths = [
                 f"Patient -> {phenotype.hpo_id} -> {candidate.disease_id}"
                 for phenotype in candidate.matched_phenotypes
             ]
-        return candidates
+        candidates.sort(key=lambda item: item.score, reverse=True)
+        return candidates[:top_k]
+
+    def _graph_evidence_score(self, candidate: CandidateDisease, hpo_terms: list[str], mode: str) -> float:
+        if mode == "local_overlap":
+            return len(candidate.matched_phenotypes) / (len(set(hpo_terms)) or 1)
+        if mode == "frequency_weighted_graph":
+            return self._frequency_weighted_graph_score(candidate, hpo_terms)
+        if mode == "gene_path":
+            return self._gene_path_graph_score(candidate, hpo_terms)
+        if mode == "source_confidence_graph":
+            return self._source_confidence_graph_score(candidate, hpo_terms)
+        raise ValueError(f"unsupported graph evidence mode: {mode}")
+
+    def _frequency_weighted_graph_score(self, candidate: CandidateDisease, hpo_terms: list[str]) -> float:
+        annotations = self.knowledge.disease_annotations.get(candidate.disease_id, [])
+        annotation_by_hpo = {annotation.hpo_id: annotation for annotation in annotations}
+        weights = [
+            _frequency_weight(annotation_by_hpo[hpo_id].frequency)
+            for hpo_id in set(hpo_terms)
+            if hpo_id in annotation_by_hpo
+        ]
+        return sum(weights) / (len(set(hpo_terms)) or 1)
+
+    def _gene_path_graph_score(self, candidate: CandidateDisease, hpo_terms: list[str]) -> float:
+        by_hpo = self.knowledge.disease_gene_phenotypes.get(candidate.disease_id, {})
+        matched_support = sum(1 for hpo_id in set(hpo_terms) if by_hpo.get(hpo_id))
+        overlap_score = matched_support / (len(set(hpo_terms)) or 1)
+        disease_gene_count = max(len(self.knowledge.disease_genes.get(candidate.disease_id, set())), 1)
+        matched_gene_count = len(set().union(*(by_hpo.get(hpo_id, set()) for hpo_id in set(hpo_terms)))) if by_hpo else 0
+        gene_specificity = min(1.0, matched_gene_count / disease_gene_count)
+        return 0.7 * overlap_score + 0.3 * gene_specificity
+
+    def _source_confidence_graph_score(self, candidate: CandidateDisease, hpo_terms: list[str]) -> float:
+        annotations = self.knowledge.disease_annotations.get(candidate.disease_id, [])
+        annotation_by_hpo = {annotation.hpo_id: annotation for annotation in annotations}
+        weights = [
+            _source_confidence_weight(annotation_by_hpo[hpo_id].evidence, annotation_by_hpo[hpo_id].source)
+            for hpo_id in set(hpo_terms)
+            if hpo_id in annotation_by_hpo
+        ]
+        return sum(weights) / (len(set(hpo_terms)) or 1)
 
     def _validate_hpo_terms(self, hpo_terms: list[str]) -> None:
         unknown = [hpo_id for hpo_id in hpo_terms if hpo_id not in self.knowledge.phenotypes]
@@ -212,7 +261,8 @@ def _validate_embedding_options(options: dict[str, str | int | float | bool]) ->
 
 def _validate_graph_options(options: dict[str, str | int | float | bool]) -> None:
     mode = str(options.get("graph_evidence_mode") or "local_overlap")
-    if mode != "local_overlap":
+    supported = {"local_overlap", "frequency_weighted_graph", "gene_path", "source_confidence_graph"}
+    if mode not in supported:
         raise ValueError(f"unsupported graph evidence mode: {mode}")
 
 
@@ -228,3 +278,43 @@ def _float_option(options: dict[str, str | int | float | bool], key: str, defaul
         except ValueError as exc:
             raise ValueError(f"{key} must be a number") from exc
     return default
+
+
+def _frequency_weight(frequency: str | None) -> float:
+    if not frequency:
+        return 0.30
+    normalized = frequency.strip().lower()
+    if normalized in {"hp:0040280", "obligate", "100%"}:
+        return 1.00
+    if normalized in {"hp:0040281", "very frequent", "very frequent (99-80%)", "80%-99%"}:
+        return 0.90
+    if normalized in {"hp:0040282", "frequent", "frequent (79-30%)", "30%-79%"}:
+        return 0.75
+    if normalized in {"hp:0040283", "occasional", "occasional (29-5%)", "5%-29%"}:
+        return 0.40
+    if normalized in {"hp:0040284", "very rare", "very rare (<4-1%)", "1%-4%"}:
+        return 0.15
+    if "/" in normalized:
+        numerator, denominator = normalized.split("/", 1)
+        try:
+            return max(0.0, min(1.0, float(numerator) / float(denominator)))
+        except ValueError:
+            return 0.30
+    if normalized.endswith("%"):
+        try:
+            return max(0.0, min(1.0, float(normalized.removesuffix("%")) / 100.0))
+        except ValueError:
+            return 0.30
+    return 0.30
+
+
+def _source_confidence_weight(evidence: str | None, source: str | None) -> float:
+    evidence_weight = {
+        "TAS": 0.90,
+        "PCS": 0.85,
+        "IEA": 0.55,
+    }.get((evidence or "").strip().upper(), 0.70)
+    source_text = (source or "").strip().lower()
+    if "hpo:" in source_text:
+        return min(1.0, evidence_weight + 0.05)
+    return evidence_weight
