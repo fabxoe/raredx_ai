@@ -5,6 +5,10 @@ const state = {
   resultMethod: "ic",
   mapperCapabilities: [],
   mapperOptions: {},
+  llmModels: {
+    openai: ["gpt-4o-mini"],
+    ollama: [],
+  },
   rankingCapabilities: [],
   rankingOptions: {},
   terms: new Map([
@@ -23,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) window.lucide.createIcons();
   bindControls();
   loadMapperCapabilities();
+  loadLlmModels("openai");
   loadRankingCapabilities();
   renderTerms();
   initializeGraph();
@@ -114,6 +119,7 @@ async function runAnalysis() {
   button.disabled = true;
   button.querySelector("span").textContent = "Running";
   hideError();
+  hideLlmStatus();
 
   try {
     let rankingResponse;
@@ -128,6 +134,7 @@ async function runAnalysis() {
         ranking_options: state.rankingOptions[rankingMethod] || {},
       });
       runMapperCompare(note);
+      renderLlmStatusFromResponse(rankingResponse);
       state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
       renderTerms();
     } else {
@@ -149,10 +156,28 @@ async function runAnalysis() {
     }
     $("#latency").textContent = `${Math.round(performance.now() - started)} ms`;
   } catch (error) {
+    renderLlmStatusFromError(error);
     showError(error.message);
   } finally {
     button.disabled = false;
     button.querySelector("span").textContent = "Run analysis";
+  }
+}
+
+async function loadLlmModels(provider) {
+  const providerName = provider || "openai";
+  try {
+    const response = await fetch(`/api/retrieval/llm-models?provider=${encodeURIComponent(providerName)}`);
+    if (!response.ok) throw new Error("LLM model list failed");
+    const models = await response.json();
+    if (Array.isArray(models) && models.length) {
+      state.llmModels[providerName] = models;
+      renderMapperOptions();
+    }
+  } catch (error) {
+    if (!state.llmModels[providerName]?.length && providerName === "openai") {
+      state.llmModels.openai = ["gpt-4o-mini"];
+    }
   }
 }
 
@@ -321,6 +346,18 @@ function optionField(className, ownerId, option, optionStore) {
   const current = optionStore[ownerId]?.[option.key] ?? option.default;
   const dataAttrs = `data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
   const attrs = `class="${escapeHtml(className)}" ${dataAttrs}`;
+  if (option.key === "chat_model") {
+    const provider = optionStore[ownerId]?.llm_provider || optionDefault(ownerId, "llm_provider") || "off";
+    if (provider === "openai") {
+      const choices = state.llmModels.openai?.length ? state.llmModels.openai : ["gpt-4o-mini"];
+      const selected = choices.includes(String(current)) ? String(current) : choices[0];
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === selected ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
+    }
+    if (provider === "ollama") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="text" value="${escapeHtml(current || "phi4-mini")}"></label>`;
+    }
+    return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="" disabled></label>`;
+  }
   if (option.key === "embedding_model") {
     const backend = optionStore[ownerId]?.embedding_backend || "sapbert_faiss";
     const displayName = embeddingModelDisplayName(backend);
@@ -381,6 +418,13 @@ function optionLabelClass(key) {
   return ["embedding_model", "ic_weight"].includes(key) ? "option-label-pad" : "";
 }
 
+function optionDefault(ownerId, key) {
+  const mapper = state.mapperCapabilities.find((item) => item.id === ownerId);
+  const ranking = state.rankingCapabilities.find((item) => item.id === ownerId);
+  const option = [...(mapper?.options || []), ...(ranking?.options || [])].find((item) => item.key === key);
+  return option?.default;
+}
+
 function optionChoiceLabel(key, value) {
   const labels = {
     embedding_backend: {
@@ -412,6 +456,14 @@ function bindOptionControls(className, optionStore) {
       optionStore[control.dataset.owner] = ownerOptions;
       if (control.dataset.key === "embedding_backend") {
         renderRankingOptions();
+        return;
+      }
+      if (control.dataset.key === "llm_provider") {
+        if (ownerOptions.llm_provider === "openai" && !ownerOptions.chat_model) {
+          ownerOptions.chat_model = state.llmModels.openai?.[0] || "gpt-4o-mini";
+        }
+        if (ownerOptions.llm_provider === "openai") loadLlmModels("openai");
+        renderMapperOptions();
         return;
       }
       if (control.classList.contains("button-choice")) {
@@ -635,6 +687,47 @@ function showError(message) {
 }
 
 function hideError() { $("#query-error").hidden = true; }
+
+function renderLlmStatusFromResponse(response) {
+  const options = state.mapperOptions[state.hpoMapper] || {};
+  const provider = String(options.llm_provider || "off").toLowerCase();
+  const requested = Boolean(options.use_llm) || String(options.protocol || "").toLowerCase() === "p3_llm_selection";
+  if (state.mode !== "note" || !requested || provider === "off") {
+    hideLlmStatus();
+    return;
+  }
+  const phenotypes = response.extracted_phenotypes || [];
+  const llmUsed = phenotypes.some((item) => item.metadata?.llm_used);
+  if (llmUsed || phenotypes.length) {
+    showLlmStatus(`${providerLabel(provider)} LLM 호출성공`, "success");
+  } else {
+    showLlmStatus(`${providerLabel(provider)} LLM 호출실패`, "error");
+  }
+}
+
+function renderLlmStatusFromError(error) {
+  const options = state.mapperOptions[state.hpoMapper] || {};
+  const provider = String(options.llm_provider || "off").toLowerCase();
+  const requested = Boolean(options.use_llm) || String(options.protocol || "").toLowerCase() === "p3_llm_selection";
+  if (!requested || provider === "off") return;
+  const message = String(error?.message || "");
+  if (/llm|openai|api_key|chat model|model/i.test(message)) {
+    showLlmStatus(`${providerLabel(provider)} LLM 호출실패`, "error");
+  }
+}
+
+function showLlmStatus(message, tone) {
+  const box = $("#llm-status");
+  box.className = `llm-status ${tone === "success" ? "is-success" : "is-error"}`;
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function hideLlmStatus() { $("#llm-status").hidden = true; }
+
+function providerLabel(provider) {
+  return provider === "openai" ? "OpenAI" : provider === "ollama" ? "Ollama" : provider;
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));

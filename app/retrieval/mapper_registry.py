@@ -52,7 +52,13 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
                     default=settings.llm_provider,
                     choices=["off", "openai", "ollama"],
                 ),
-                HPOMapperOption(key="chat_model", label="Chat model", type="text", default=""),
+                HPOMapperOption(
+                    key="chat_model",
+                    label="Chat model",
+                    type="select",
+                    default=settings.openai_model,
+                    choices=[settings.openai_model],
+                ),
             ],
         ),
         HPOMapperCapability(

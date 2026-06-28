@@ -622,3 +622,20 @@ Clinical note 기반 retrieval:
 
 - UI에서 `Graph only` 탭을 계속 노출할지, 아니면 graph를 Hybrid 내부 evidence mode로만 둘지 결정한다.
 - `frequency_weighted_graph`와 `gene_path`의 score 분포를 실제 HPO 전체 데이터와 RareArena sample에서 비교한다.
+
+---
+
+## 2026-06-29 업데이트
+
+### LLM provider 모델 선택 및 호출 상태 표시
+
+- `Original HPO-Mapper`의 `Chat model` 입력을 text field에서 select 기반 UI로 바꿨다.
+- `LLM provider=openai`일 때 기본 모델은 `gpt-4o-mini`로 표시된다.
+- `/api/retrieval/llm-models` endpoint를 추가해 가능하면 OpenAI `/v1/models`에서 계정에 보이는 모델 목록을 가져오고, 실패하거나 API key가 없으면 `gpt-4o-mini`로 fallback한다.
+- `Run analysis` 후 LLM 호출이 실제로 사용된 경우 프론트에 `OpenAI LLM 호출성공` 또는 `OpenAI LLM 호출실패` 상태 배지를 표시한다.
+- API key는 `.env`에서만 읽고 응답/로그/문서에는 노출하지 않는다.
+
+검증:
+
+- `uv run pytest`
+  - 결과: `31 passed`

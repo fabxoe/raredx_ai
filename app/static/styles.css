@@ -560,6 +560,20 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .primary-button:hover { background: #10643d; }
 .primary-button:disabled { opacity: 0.55; cursor: wait; }
 .primary-button svg { width: 16px; height: 16px; }
+.llm-status {
+  margin-top: 10px;
+  padding: 9px;
+  border-left: 3px solid var(--green);
+  background: #eef8f2;
+  color: #135b3c;
+  font-size: 12px;
+  font-weight: 700;
+}
+.llm-status.is-error {
+  border-left-color: var(--red);
+  background: #fff0f0;
+  color: #8f2929;
+}
 .error-message { margin-top: 10px; padding: 9px; border-left: 3px solid var(--red); background: #fff0f0; color: #8f2929; font-size: 12px; }
 
 .inspector { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--border); }

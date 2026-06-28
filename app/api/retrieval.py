@@ -3,6 +3,7 @@ from functools import lru_cache
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
+from app.llm.model_catalog import available_chat_models
 from app.retrieval.ranking_registry import ranking_method_capabilities
 from app.schemas.ranking import RankingMethodCapability
 from app.schemas.retrieval import (
@@ -46,6 +47,11 @@ def retrieve_hybrid(request: RetrievalRequest) -> RetrievalResponse:
 @router.get("/ranking-methods", response_model=list[RankingMethodCapability])
 def list_ranking_methods() -> list[RankingMethodCapability]:
     return ranking_method_capabilities(get_settings())
+
+
+@router.get("/llm-models", response_model=list[str])
+def list_llm_models(provider: str = Query(default="openai")) -> list[str]:
+    return available_chat_models(get_settings(), provider)
 
 
 @router.get("/phenotypes", response_model=list[PhenotypeSearchItem])

@@ -160,6 +160,20 @@ def test_hpo_mapper_capabilities_endpoint() -> None:
     original = next(item for item in body if item["id"] == "original_hpo_mapper")
     option_keys = {item["key"] for item in original["options"]}
     assert {"protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)
+    chat_model = next(item for item in original["options"] if item["key"] == "chat_model")
+    assert chat_model["type"] == "select"
+    assert chat_model["default"] == "gpt-4o-mini"
+
+
+def test_llm_model_endpoint_returns_default_without_api_key(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+
+    response = client.get("/api/retrieval/llm-models", params={"provider": "openai"})
+
+    assert response.status_code == 200
+    assert response.json()[0] == "gpt-4o-mini"
 
 
 def test_ranking_method_capabilities_endpoint() -> None:
