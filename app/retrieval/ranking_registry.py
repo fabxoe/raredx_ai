@@ -33,6 +33,21 @@ def ranking_method_capabilities(settings: Settings) -> list[RankingMethodCapabil
             ],
         ),
         RankingMethodCapability(
+            id="graph",
+            label="Graph",
+            description="Knowledge graph evidence ranking from explicit disease-phenotype overlap.",
+            configured=True,
+            options=[
+                RankingOption(
+                    key="graph_evidence_mode",
+                    label="Graph evidence",
+                    type="select",
+                    default="local_overlap",
+                    choices=["local_overlap"],
+                ),
+            ],
+        ),
+        RankingMethodCapability(
             id="hybrid",
             label="Hybrid",
             description="Linear re-ranking over IC, disease embedding, and graph evidence scores.",

@@ -33,6 +33,11 @@ def retrieve_embedding(request: RetrievalRequest) -> RetrievalResponse:
     return _retrieve(request, mode="embedding")
 
 
+@router.post("/graph", response_model=RetrievalResponse)
+def retrieve_graph(request: RetrievalRequest) -> RetrievalResponse:
+    return _retrieve(request, mode="graph")
+
+
 @router.post("/hybrid", response_model=RetrievalResponse)
 def retrieve_hybrid(request: RetrievalRequest) -> RetrievalResponse:
     return _retrieve(request, mode="hybrid")
@@ -65,6 +70,11 @@ def retrieve_note_embedding(request: ClinicalNoteRetrievalRequest) -> ClinicalNo
     return _retrieve_note(request, mode="embedding")
 
 
+@router.post("/note/graph", response_model=ClinicalNoteRetrievalResponse)
+def retrieve_note_graph(request: ClinicalNoteRetrievalRequest) -> ClinicalNoteRetrievalResponse:
+    return _retrieve_note(request, mode="graph")
+
+
 @router.post("/note/hybrid", response_model=ClinicalNoteRetrievalResponse)
 def retrieve_note_hybrid(request: ClinicalNoteRetrievalRequest) -> ClinicalNoteRetrievalResponse:
     return _retrieve_note(request, mode="hybrid")
@@ -77,6 +87,8 @@ def _retrieve(request: RetrievalRequest, mode: str) -> RetrievalResponse:
             candidates = service.rank_ic(request.hpo_terms, request.top_k, options=request.ranking_options)
         elif mode == "embedding":
             candidates = service.rank_embedding(request.hpo_terms, request.top_k, options=request.ranking_options)
+        elif mode == "graph":
+            candidates = service.rank_graph(request.hpo_terms, request.top_k, options=request.ranking_options)
         else:
             candidates = service.rank_hybrid(request.hpo_terms, request.top_k, options=request.ranking_options)
     except FileNotFoundError as exc:
@@ -104,6 +116,8 @@ def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> Clinical
             candidates = service.rank_ic(hpo_terms, request.top_k, options=request.ranking_options)
         elif mode == "embedding":
             candidates = service.rank_embedding(hpo_terms, request.top_k, options=request.ranking_options)
+        elif mode == "graph":
+            candidates = service.rank_graph(hpo_terms, request.top_k, options=request.ranking_options)
         else:
             candidates = service.rank_hybrid(hpo_terms, request.top_k, options=request.ranking_options)
     except FileNotFoundError as exc:

@@ -134,6 +134,16 @@ class RetrievalService:
         self._validate_hpo_terms(hpo_terms)
         return self.embedding_index.search(hpo_terms, top_k)
 
+    def rank_graph(
+        self,
+        hpo_terms: list[str],
+        top_k: int,
+        options: dict[str, str | int | float | bool] | None = None,
+    ) -> list[CandidateDisease]:
+        _validate_graph_options(options or {})
+        self._validate_hpo_terms(hpo_terms)
+        return self._local_graph_overlap(hpo_terms, top_k)
+
     def rank_hybrid(
         self,
         hpo_terms: list[str],
@@ -198,6 +208,12 @@ def _validate_embedding_options(options: dict[str, str | int | float | bool]) ->
     backend = str(options.get("embedding_backend") or "sapbert_faiss")
     if backend != "sapbert_faiss":
         raise ValueError(f"unsupported disease embedding backend: {backend}")
+
+
+def _validate_graph_options(options: dict[str, str | int | float | bool]) -> None:
+    mode = str(options.get("graph_evidence_mode") or "local_overlap")
+    if mode != "local_overlap":
+        raise ValueError(f"unsupported graph evidence mode: {mode}")
 
 
 def _float_option(options: dict[str, str | int | float | bool], key: str, default: float) -> float:

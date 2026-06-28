@@ -478,6 +478,7 @@ function isScoreComponentUsed(key, method) {
   if (method === "hybrid") return true;
   if (method === "ic") return key === "ic_score";
   if (method === "embedding") return key === "embedding_score";
+  if (method === "graph") return key === "graph_score";
   return true;
 }
 

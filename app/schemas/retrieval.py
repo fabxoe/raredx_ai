@@ -10,7 +10,7 @@ HPOMapperMode = Literal[
     "original_hpo_mapper",
     "dictionary_doc2hpo",
 ]
-RankingMethod = Literal["ic", "embedding", "hybrid"]
+RankingMethod = Literal["ic", "embedding", "graph", "hybrid"]
 
 
 class RetrievalRequest(BaseModel):

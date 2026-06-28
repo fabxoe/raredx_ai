@@ -58,6 +58,8 @@ def compare_hpo_mappers(request: HPOMapperCompareRequest) -> HPOMapperCompareRes
             if hpo_terms:
                 if request.ranking_method == "hybrid":
                     candidates = service.rank_hybrid(hpo_terms, request.top_k, options=request.ranking_options)
+                elif request.ranking_method == "graph":
+                    candidates = service.rank_graph(hpo_terms, request.top_k, options=request.ranking_options)
                 elif request.ranking_method == "embedding":
                     candidates = service.rank_embedding(hpo_terms, request.top_k, options=request.ranking_options)
                 else:
