@@ -2,6 +2,7 @@ const state = {
   mode: "note",
   method: "ic",
   hpoMapper: "dictionary",
+  resultMethod: "ic",
   mapperCapabilities: [],
   mapperOptions: {},
   rankingCapabilities: [],
@@ -109,6 +110,7 @@ function renderTerms() {
 async function runAnalysis() {
   const button = $("#run-analysis");
   const started = performance.now();
+  const rankingMethod = state.method;
   button.disabled = true;
   button.querySelector("span").textContent = "Running";
   hideError();
@@ -118,22 +120,22 @@ async function runAnalysis() {
     if (state.mode === "note") {
       const note = $("#clinical-note").value.trim();
       if (!note) throw new Error("Clinical note를 입력하세요.");
-      const noteMethod = state.method;
-      rankingResponse = await postJson(`/api/retrieval/note/${noteMethod}`, {
+      rankingResponse = await postJson(`/api/retrieval/note/${rankingMethod}`, {
         clinical_note: note,
         top_k: Number($("#top-k").value),
         hpo_mapper: state.hpoMapper,
         hpo_mapper_options: state.mapperOptions[state.hpoMapper] || {},
-        ranking_options: state.rankingOptions[state.method] || {},
+        ranking_options: state.rankingOptions[rankingMethod] || {},
       });
       runMapperCompare(note);
       state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
       renderTerms();
     } else {
       if (state.terms.size === 0) throw new Error("HPO term을 하나 이상 선택하세요.");
-      rankingResponse = await postJson(`/api/retrieval/${state.method}`, requestPayload());
+      rankingResponse = await postJson(`/api/retrieval/${rankingMethod}`, requestPayload(rankingMethod));
     }
 
+    state.resultMethod = rankingMethod;
     state.candidates = rankingResponse.candidates;
     renderRanking(state.candidates);
     $("#result-count").textContent = `${state.candidates.length} candidates`;
@@ -392,11 +394,11 @@ function readOptionValue(control) {
   return control.value;
 }
 
-function requestPayload() {
+function requestPayload(method = state.method) {
   return {
     hpo_terms: [...state.terms.keys()],
     top_k: Number($("#top-k").value),
-    ranking_options: state.rankingOptions[state.method] || {},
+    ranking_options: state.rankingOptions[method] || {},
   };
 }
 
@@ -432,7 +434,7 @@ function renderRanking(candidates) {
 function selectCandidate(candidate, index) {
   $$(".disease-row").forEach((row) => row.classList.toggle("active", Number(row.dataset.index) === index));
   $("#selected-disease-id").textContent = candidate.disease_id;
-  $("#score-bars").innerHTML = scoreRows(candidate.score_components);
+  $("#score-bars").innerHTML = scoreRows(candidate.score_components, state.resultMethod);
   $("#matched-list").innerHTML = listItems(candidate.matched_phenotypes.map((item) => `${item.name || item.hpo_id} · ${item.hpo_id}`));
   $("#gene-list").innerHTML = listItems(candidate.associated_genes);
   if (state.graph) {
@@ -446,13 +448,13 @@ function selectCandidate(candidate, index) {
   }
 }
 
-function scoreRows(scoreComponents) {
+function scoreRows(scoreComponents, method) {
   const orderedKeys = ["ic_score", "embedding_score", "graph_score"];
+  const components = scoreComponents || {};
   return orderedKeys
-    .filter((key) => Object.prototype.hasOwnProperty.call(scoreComponents, key))
     .map((key) => {
       const label = key.replace("_score", "");
-      if (!isScoreComponentUsed(key)) {
+      if (!isScoreComponentUsed(key, method)) {
         return `
           <div class="score-row score-row-muted">
             <span>${escapeHtml(label)}</span>
@@ -461,7 +463,7 @@ function scoreRows(scoreComponents) {
           </div>
         `;
       }
-      const score = Math.max(0, Math.min(1, Number(scoreComponents[key])));
+      const score = Math.max(0, Math.min(1, Number(components[key] || 0)));
       return `
         <div class="score-row">
           <span>${escapeHtml(label)}</span>
@@ -472,10 +474,10 @@ function scoreRows(scoreComponents) {
     }).join("");
 }
 
-function isScoreComponentUsed(key) {
-  if (state.method === "hybrid") return true;
-  if (state.method === "ic") return key === "ic_score";
-  if (state.method === "embedding") return key === "embedding_score";
+function isScoreComponentUsed(key, method) {
+  if (method === "hybrid") return true;
+  if (method === "ic") return key === "ic_score";
+  if (method === "embedding") return key === "embedding_score";
   return true;
 }
 
