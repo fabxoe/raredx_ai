@@ -432,10 +432,7 @@ function renderRanking(candidates) {
 function selectCandidate(candidate, index) {
   $$(".disease-row").forEach((row) => row.classList.toggle("active", Number(row.dataset.index) === index));
   $("#selected-disease-id").textContent = candidate.disease_id;
-  $("#score-bars").innerHTML = Object.entries(candidate.score_components).map(([key, value]) => {
-    const score = Math.max(0, Math.min(1, Number(value)));
-    return `<div class="score-row"><span>${escapeHtml(key.replace("_score", ""))}</span><div class="score-track"><div class="score-fill" style="width:${score * 100}%"></div></div><strong>${score.toFixed(2)}</strong></div>`;
-  }).join("");
+  $("#score-bars").innerHTML = scoreRows(candidate.score_components);
   $("#matched-list").innerHTML = listItems(candidate.matched_phenotypes.map((item) => `${item.name || item.hpo_id} · ${item.hpo_id}`));
   $("#gene-list").innerHTML = listItems(candidate.associated_genes);
   if (state.graph) {
@@ -447,6 +444,39 @@ function selectCandidate(candidate, index) {
       state.graph.animate({ center: { eles: node }, zoom: Math.max(state.graph.zoom(), 1.2) }, { duration: 350 });
     }
   }
+}
+
+function scoreRows(scoreComponents) {
+  const orderedKeys = ["ic_score", "embedding_score", "graph_score"];
+  return orderedKeys
+    .filter((key) => Object.prototype.hasOwnProperty.call(scoreComponents, key))
+    .map((key) => {
+      const label = key.replace("_score", "");
+      if (!isScoreComponentUsed(key)) {
+        return `
+          <div class="score-row score-row-muted">
+            <span>${escapeHtml(label)}</span>
+            <div class="score-track is-unused"><div class="score-fill" style="width:0%"></div></div>
+            <strong>Not used</strong>
+          </div>
+        `;
+      }
+      const score = Math.max(0, Math.min(1, Number(scoreComponents[key])));
+      return `
+        <div class="score-row">
+          <span>${escapeHtml(label)}</span>
+          <div class="score-track"><div class="score-fill" style="width:${score * 100}%"></div></div>
+          <strong>${score.toFixed(2)}</strong>
+        </div>
+      `;
+    }).join("");
+}
+
+function isScoreComponentUsed(key) {
+  if (state.method === "hybrid") return true;
+  if (state.method === "ic") return key === "ic_score";
+  if (state.method === "embedding") return key === "embedding_score";
+  return true;
 }
 
 function initializeGraph() {

@@ -129,8 +129,27 @@ h1 { font-size: 16px; line-height: 1.2; }
 }
 
 .login-brand {
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--border);
+  gap: 14px;
+  padding-bottom: 6px;
+}
+
+.auth-logo {
+  width: 178px;
+  max-width: 54%;
+  height: auto;
+  display: block;
+}
+
+.auth-domain {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.app-brand {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
 }
 
 .login-copy {
@@ -155,14 +174,14 @@ h1 { font-size: 16px; line-height: 1.2; }
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: var(--green);
+  background: #2f6df6;
   color: #fff;
   font-weight: 750;
   text-decoration: none;
 }
 
 .login-action:hover {
-  background: #126b41;
+  background: #245ed8;
 }
 
 .login-note {
@@ -179,7 +198,7 @@ h1 { font-size: 16px; line-height: 1.2; }
   height: 28px;
   margin-top: 22px;
   border: 3px solid var(--border);
-  border-top-color: var(--green);
+  border-top-color: #2f6df6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -587,9 +606,12 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
 .evidence-header { justify-content: space-between; }
 .evidence-header span { color: var(--muted); font-size: 10px; }
 .score-bars { margin: 12px 0; display: grid; gap: 7px; }
-.score-row { display: grid; grid-template-columns: 74px 1fr 38px; align-items: center; gap: 7px; font-size: 10px; }
+.score-row { display: grid; grid-template-columns: 74px 1fr 52px; align-items: center; gap: 7px; font-size: 10px; }
 .score-track { height: 6px; overflow: hidden; background: #dde2df; border-radius: 3px; }
 .score-fill { height: 100%; background: var(--green); border-radius: 3px; }
+.score-row-muted span, .score-row-muted strong { color: var(--muted); }
+.score-row-muted strong { font-weight: 600; font-size: 9px; text-align: right; }
+.score-track.is-unused { background: #e8ece9; }
 .evidence-columns { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; }
 .evidence-columns ul { margin: 0; padding: 0; list-style: none; }
 .evidence-columns li { padding: 3px 0; color: #3e4943; font-size: 11px; }

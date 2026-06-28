@@ -30,7 +30,9 @@ def create_app() -> FastAPI:
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["retrieval"])
     app.include_router(graph_router, prefix="/api/graph", tags=["graph"])
     app.include_router(hpo_mappers_router, prefix="/api/hpo-mappers", tags=["hpo-mappers"])
+    assets_dir = Path(__file__).parent.parent / "assets"
     static_dir = Path(__file__).parent / "static"
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", include_in_schema=False)
