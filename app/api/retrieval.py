@@ -95,6 +95,8 @@ def _retrieve(request: RetrievalRequest, mode: str) -> RetrievalResponse:
         raise HTTPException(status_code=503, detail=f"processed data is not available: {exc}") from exc
     except ImportError as exc:
         raise HTTPException(status_code=503, detail=f"embedding dependency is not available: {exc}") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RetrievalResponse(query_hpo_terms=request.hpo_terms, candidates=candidates)

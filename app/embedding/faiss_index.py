@@ -4,13 +4,13 @@ from typing import Any
 
 import numpy as np
 
-from app.embedding.biomedical import BiomedicalEmbedder, phenotype_text
+from app.embedding.biomedical import BiomedicalEmbedder, BioSentVecEmbedder, phenotype_text
 from app.retrieval.knowledge import KnowledgeIndex
 from app.schemas.retrieval import CandidateDisease, MatchedPhenotype, ScoreComponents
 
 
 class DiseaseEmbeddingIndex:
-    def __init__(self, knowledge: KnowledgeIndex, embedder: BiomedicalEmbedder) -> None:
+    def __init__(self, knowledge: KnowledgeIndex, embedder: BiomedicalEmbedder | BioSentVecEmbedder) -> None:
         self.knowledge = knowledge
         self.embedder = embedder
         self._index: object | None = None

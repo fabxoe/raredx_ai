@@ -5,13 +5,15 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.embedding.backends import (
+    BIOSENTVEC_EMBEDDING_BACKEND,
     DEFAULT_EMBEDDING_BACKEND,
     hpo_graph_strategy_for_backend,
     index_dir_name,
     is_hpo_graph_embedding_backend,
     resolve_embedding_model,
 )
-from app.embedding.biomedical import BiomedicalEmbedder
+from app.config import get_settings
+from app.embedding.biomedical import BiomedicalEmbedder, BioSentVecEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
 from app.embedding.hpo_graph_index import HPOGraphEmbeddingIndex
 from app.etl.processed_store import load_processed_knowledge_base
@@ -29,6 +31,9 @@ def main() -> None:
     knowledge = KnowledgeIndex(load_processed_knowledge_base(args.processed_dir))
     if is_hpo_graph_embedding_backend(args.backend):
         index = HPOGraphEmbeddingIndex(knowledge, walk_strategy=hpo_graph_strategy_for_backend(args.backend))
+    elif args.backend == BIOSENTVEC_EMBEDDING_BACKEND:
+        settings = get_settings()
+        index = DiseaseEmbeddingIndex(knowledge, BioSentVecEmbedder(args.model or settings.biosentvec_model_path))
     else:
         index = DiseaseEmbeddingIndex(knowledge, BiomedicalEmbedder(model_name))
     index_dir = args.processed_dir / "faiss" / index_dir_name(args.backend, model_name)

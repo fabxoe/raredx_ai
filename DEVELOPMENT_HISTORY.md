@@ -498,9 +498,14 @@ Clinical note 기반 retrieval:
 - `sapbert_faiss` 단일 embedding backend 구조를 확장했다.
 - 지원 backend:
   - `sapbert_faiss`
+  - `pubmedbert_faiss`
+  - `biosentvec_faiss`
   - `custom_sentence_transformer_faiss`
   - `hpo_deepwalk_faiss`
   - `hpo_node2vec_faiss`
+- `pubmedbert_faiss`는 PubMedBERT 기반 biomedical literature encoder 비교군이다.
+- `biosentvec_faiss`는 BioSentVec 외부 모델 파일과 optional `sent2vec` package를 사용하는 sentence-vector 비교군이다.
+  - `RAREDX_BIOSENTVEC_MODEL_PATH`가 없으면 503 설정 안내를 반환한다.
 - `custom_sentence_transformer_faiss`는 사용자가 sentence-transformer model name을 지정해 disease embedding retrieval을 비교할 수 있는 실험용 backend다.
 - `hpo_deepwalk_faiss`는 `hp.obo`의 HPO `IS_A` ontology graph에서 uniform random walk 기반 HPO node vector를 만들고, disease/patient profile vector를 FAISS로 비교하는 backend다.
 - `hpo_node2vec_faiss`는 이전 node 기준의 biased random walk 기반 HPO node vector를 만들고, disease/patient profile vector를 FAISS로 비교하는 backend다.
@@ -515,9 +520,12 @@ Clinical note 기반 retrieval:
 - `/api/retrieval/ranking-methods`가 embedding backend/model option을 내려주고, 프론트가 자동 렌더링하도록 정리했다.
 - 프론트 select option은 내부 key 대신 사용자용 label로 표시한다.
   - `SapBERT · FAISS`
+  - `PubMedBERT · FAISS`
+  - `BioSentVec · FAISS`
   - `Custom ST · FAISS`
   - `HPO DeepWalk · FAISS`
   - `HPO Node2Vec · FAISS`
+- 프론트의 SapBERT model 표시가 `SapBERT PubMedBERT`처럼 보이던 혼란을 줄이기 위해 사용자 표시명을 `SapBERT`로 정리했다.
 
 검증:
 

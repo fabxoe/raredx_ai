@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.config import Settings
 from app.embedding.backends import (
+    BIOSENTVEC_EMBEDDING_BACKEND,
     DEFAULT_EMBEDDING_BACKEND,
     hpo_graph_strategy_for_backend,
     index_dir_name,
@@ -10,7 +11,7 @@ from app.embedding.backends import (
     resolve_embedding_model,
     supported_embedding_backend_keys,
 )
-from app.embedding.biomedical import BiomedicalEmbedder
+from app.embedding.biomedical import BiomedicalEmbedder, BioSentVecEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
 from app.embedding.hpo_graph_index import HPOGraphEmbeddingIndex
 from app.etl.processed_store import load_processed_knowledge_base
@@ -207,6 +208,8 @@ class RetrievalService:
     ) -> DiseaseEmbeddingIndex | HPOGraphEmbeddingIndex:
         if is_hpo_graph_embedding_backend(backend):
             return HPOGraphEmbeddingIndex(self.knowledge, walk_strategy=hpo_graph_strategy_for_backend(backend))
+        if backend == BIOSENTVEC_EMBEDDING_BACKEND:
+            return DiseaseEmbeddingIndex(self.knowledge, BioSentVecEmbedder(self.settings.biosentvec_model_path))
         return DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(model_name))
 
     def _graph_evidence_rank(

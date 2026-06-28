@@ -5,11 +5,15 @@ from dataclasses import dataclass
 
 
 DEFAULT_EMBEDDING_BACKEND = "sapbert_faiss"
+PUBMEDBERT_EMBEDDING_BACKEND = "pubmedbert_faiss"
+BIOSENTVEC_EMBEDDING_BACKEND = "biosentvec_faiss"
 CUSTOM_EMBEDDING_BACKEND = "custom_sentence_transformer_faiss"
 HPO_DEEPWALK_EMBEDDING_BACKEND = "hpo_deepwalk_faiss"
 HPO_NODE2VEC_EMBEDDING_BACKEND = "hpo_node2vec_faiss"
 HPO_GRAPH_EMBEDDING_BACKEND = "hpo_graph_embedding_faiss"
 DEFAULT_EMBEDDING_MODEL = "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"
+DEFAULT_PUBMEDBERT_MODEL = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
+DEFAULT_BIOSENTVEC_MODEL = "BioSentVec external model"
 DEFAULT_HPO_DEEPWALK_MODEL = "deepwalk_hash_dim128"
 DEFAULT_HPO_NODE2VEC_MODEL = "node2vec_hash_dim128_p1_q0.5"
 
@@ -28,6 +32,18 @@ EMBEDDING_BACKENDS: dict[str, EmbeddingBackend] = {
         label="SapBERT · FAISS",
         model_name=DEFAULT_EMBEDDING_MODEL,
         description="Biomedical synonym-aware sentence-transformer disease profile retrieval.",
+    ),
+    PUBMEDBERT_EMBEDDING_BACKEND: EmbeddingBackend(
+        key=PUBMEDBERT_EMBEDDING_BACKEND,
+        label="PubMedBERT · FAISS",
+        model_name=DEFAULT_PUBMEDBERT_MODEL,
+        description="Biomedical literature-pretrained PubMedBERT disease profile retrieval.",
+    ),
+    BIOSENTVEC_EMBEDDING_BACKEND: EmbeddingBackend(
+        key=BIOSENTVEC_EMBEDDING_BACKEND,
+        label="BioSentVec · FAISS",
+        model_name=DEFAULT_BIOSENTVEC_MODEL,
+        description="External BioSentVec sentence-vector disease profile retrieval.",
     ),
     CUSTOM_EMBEDDING_BACKEND: EmbeddingBackend(
         key=CUSTOM_EMBEDDING_BACKEND,
@@ -60,6 +76,8 @@ def resolve_embedding_model(backend: str, requested_model: str | None = None) ->
         if not model_name:
             raise ValueError("embedding_model is required for custom_sentence_transformer_faiss")
         return model_name
+    if backend == BIOSENTVEC_EMBEDDING_BACKEND:
+        return DEFAULT_BIOSENTVEC_MODEL
     if backend in {HPO_DEEPWALK_EMBEDDING_BACKEND, HPO_GRAPH_EMBEDDING_BACKEND}:
         return DEFAULT_HPO_DEEPWALK_MODEL
     if backend == HPO_NODE2VEC_EMBEDDING_BACKEND:
@@ -74,6 +92,10 @@ def resolve_embedding_model(backend: str, requested_model: str | None = None) ->
 def index_dir_name(backend: str, model_name: str) -> str:
     if backend == DEFAULT_EMBEDDING_BACKEND and model_name == DEFAULT_EMBEDDING_MODEL:
         return DEFAULT_EMBEDDING_BACKEND
+    if backend == PUBMEDBERT_EMBEDDING_BACKEND and model_name == DEFAULT_PUBMEDBERT_MODEL:
+        return PUBMEDBERT_EMBEDDING_BACKEND
+    if backend == BIOSENTVEC_EMBEDDING_BACKEND and model_name == DEFAULT_BIOSENTVEC_MODEL:
+        return BIOSENTVEC_EMBEDDING_BACKEND
     if backend in {HPO_DEEPWALK_EMBEDDING_BACKEND, HPO_GRAPH_EMBEDDING_BACKEND} and model_name == DEFAULT_HPO_DEEPWALK_MODEL:
         return HPO_DEEPWALK_EMBEDDING_BACKEND
     if backend == HPO_NODE2VEC_EMBEDDING_BACKEND and model_name == DEFAULT_HPO_NODE2VEC_MODEL:

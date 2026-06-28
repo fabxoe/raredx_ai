@@ -152,6 +152,19 @@ uv run scripts/build_faiss.py
 첫 실행 시 SapBERT model 다운로드와 embedding 계산 때문에 시간이 걸릴 수 있다.
 기본 출력 위치는 `data/processed/faiss/sapbert_faiss/`다. 기존 `data/processed/faiss/disease.faiss` 경로도 읽을 수 있게 유지한다.
 
+PubMedBERT 기반 disease embedding index를 만들려면 다음 명령을 사용한다.
+
+```bash
+uv run scripts/build_faiss.py --backend pubmedbert_faiss
+```
+
+BioSentVec는 sentence-transformer가 아니라 외부 sentence vector model file과 optional `sent2vec` Python package가 필요하다.
+`RAREDX_BIOSENTVEC_MODEL_PATH` 또는 `--model`에 모델 파일 경로를 지정한다.
+
+```bash
+uv run scripts/build_faiss.py --backend biosentvec_faiss --model /path/to/biosentvec/model
+```
+
 다른 sentence-transformer 모델을 비교하려면 별도 backend/model 조합으로 인덱스를 만든다.
 
 ```bash
@@ -338,8 +351,10 @@ Ranking method capability는 다음 endpoint에서 확인할 수 있다.
 curl http://127.0.0.1:8010/api/retrieval/ranking-methods
 ```
 
-현재 disease embedding backend는 `sapbert_faiss`, `custom_sentence_transformer_faiss`, `hpo_deepwalk_faiss`, `hpo_node2vec_faiss`를 지원한다.
-`sapbert_faiss`는 SapBERT 고정 비교군이고, `custom_sentence_transformer_faiss`는 모델명을 직접 입력해 sentence-transformer 계열 embedding retrieval을 비교하는 실험용 backend다.
+현재 disease embedding backend는 `sapbert_faiss`, `pubmedbert_faiss`, `biosentvec_faiss`, `custom_sentence_transformer_faiss`, `hpo_deepwalk_faiss`, `hpo_node2vec_faiss`를 지원한다.
+`sapbert_faiss`는 SapBERT 고정 비교군이고, `pubmedbert_faiss`는 PubMedBERT 기반 biomedical literature encoder 비교군이다.
+`biosentvec_faiss`는 BioSentVec 외부 모델 파일을 사용하는 sentence-vector 비교군이며, 모델 파일 경로와 optional `sent2vec` package 설정이 필요하다.
+`custom_sentence_transformer_faiss`는 모델명을 직접 입력해 sentence-transformer 계열 embedding retrieval을 비교하는 실험용 backend다.
 `hpo_deepwalk_faiss`와 `hpo_node2vec_faiss`는 `hp.obo`의 HPO `IS_A` ontology graph만 사용해 HPO node vector를 만든 뒤 FAISS로 disease profile을 검색하는 graph embedding backend다.
 Neo4j에 적재된 disease-gene-phenotype 전체 knowledge graph가 아니라, HPO term 사이의 ontology DAG를 사용한다.
 프론트는 `/api/retrieval/ranking-methods` capability에 내려오는 선택지를 자동으로 렌더링한다.

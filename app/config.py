@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         default="cambridgeltl/SapBERT-from-PubMedBERT-fulltext",
         alias="RAREDX_EMBEDDING_MODEL",
     )
+    biosentvec_model_path: str | None = Field(default=None, alias="RAREDX_BIOSENTVEC_MODEL_PATH")
     ic_weight: float = Field(default=0.45, alias="RAREDX_IC_WEIGHT")
     embedding_weight: float = Field(default=0.35, alias="RAREDX_EMBEDDING_WEIGHT")
     graph_weight: float = Field(default=0.20, alias="RAREDX_GRAPH_WEIGHT")

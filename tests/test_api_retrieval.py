@@ -178,9 +178,14 @@ def test_ranking_method_capabilities_endpoint() -> None:
     assert {"frequency_weighted_graph", "gene_path", "source_confidence_graph"}.issubset(set(graph_mode["choices"]))
     embedding = next(item for item in body if item["id"] == "embedding")
     embedding_backend = next(item for item in embedding["options"] if item["key"] == "embedding_backend")
-    assert {"sapbert_faiss", "custom_sentence_transformer_faiss", "hpo_deepwalk_faiss", "hpo_node2vec_faiss"}.issubset(
-        set(embedding_backend["choices"])
-    )
+    assert {
+        "sapbert_faiss",
+        "pubmedbert_faiss",
+        "biosentvec_faiss",
+        "custom_sentence_transformer_faiss",
+        "hpo_deepwalk_faiss",
+        "hpo_node2vec_faiss",
+    }.issubset(set(embedding_backend["choices"]))
     hybrid = next(item for item in body if item["id"] == "hybrid")
     option_keys = {item["key"] for item in hybrid["options"]}
     assert {"embedding_backend", "embedding_model", "ic_weight", "embedding_weight", "graph_weight"}.issubset(option_keys)
@@ -234,6 +239,32 @@ def test_embedding_retrieval_rejects_custom_backend_without_model(tmp_path: Path
 
     assert response.status_code == 400
     assert "embedding_model is required" in response.json()["detail"]
+
+
+def test_embedding_retrieval_reports_unconfigured_biosentvec(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    monkeypatch.delenv("RAREDX_BIOSENTVEC_MODEL_PATH", raising=False)
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/embedding",
+        json={
+            "hpo_terms": ["HP:0001250"],
+            "top_k": 1,
+            "ranking_options": {"embedding_backend": "biosentvec_faiss"},
+        },
+    )
+
+    assert response.status_code == 503
+    assert "RAREDX_BIOSENTVEC_MODEL_PATH" in response.json()["detail"]
 
 
 def test_embedding_retrieval_supports_hpo_graph_backends(tmp_path: Path, monkeypatch) -> None:

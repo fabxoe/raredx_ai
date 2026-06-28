@@ -357,7 +357,13 @@ function optionField(className, ownerId, option, optionStore) {
   if (option.key === "embedding_model") {
     const backend = optionStore[ownerId]?.embedding_backend || "sapbert_faiss";
     if (backend === "sapbert_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="SapBERT PubMedBERT" disabled></label>`;
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="SapBERT" disabled></label>`;
+    }
+    if (backend === "pubmedbert_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="PubMedBERT" disabled></label>`;
+    }
+    if (backend === "biosentvec_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="BioSentVec external" disabled></label>`;
     }
     if (backend === "hpo_deepwalk_faiss" || backend === "hpo_graph_embedding_faiss") {
       return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO DeepWalk random-walk" disabled></label>`;
@@ -378,6 +384,8 @@ function optionChoiceLabel(key, value) {
   const labels = {
     embedding_backend: {
       sapbert_faiss: "SapBERT · FAISS",
+      pubmedbert_faiss: "PubMedBERT · FAISS",
+      biosentvec_faiss: "BioSentVec · FAISS",
       custom_sentence_transformer_faiss: "Custom ST · FAISS",
       hpo_deepwalk_faiss: "HPO DeepWalk · FAISS",
       hpo_node2vec_faiss: "HPO Node2Vec · FAISS",
@@ -611,7 +619,7 @@ function graphStyles() {
 function methodLabel(method) {
   const configured = state.rankingCapabilities.find((item) => item.id === method);
   if (configured?.label) return configured.label;
-  return { ic: "IC baseline", embedding: "SapBERT · FAISS", hybrid: "Hybrid re-ranking" }[method];
+  return { ic: "IC baseline", embedding: "Embedding retrieval", graph: "Graph evidence", hybrid: "Hybrid re-ranking" }[method];
 }
 
 function listItems(items) {
