@@ -514,3 +514,24 @@ Clinical note 기반 retrieval:
 
 - Cloudflare Access에서 `www.cromtind.uk` 보호 정책을 팀원 이메일 기준으로 정리한다.
 - 이후 `/logout` 중간 페이지를 추가해 로그아웃 후 로그인 페이지로 자연스럽게 이동시키는 흐름을 구현한다.
+
+---
+
+## 2026-06-28 업데이트
+
+### Graph evidence scoring 설계 문서 추가
+
+- 현재 graph score가 `local_overlap` 기반이라 IC baseline과 중복 신호가 크다는 점을 정리했다.
+- `Graph only` ranking은 현재 많은 후보가 1.0으로 묶여 구분력이 약하므로, 우선은 `Hybrid` 내부의 graph evidence component로 강화하는 방향을 설계했다.
+- 향후 graph evidence mode 후보를 정리했다.
+  - `local_overlap`
+  - `gene_path`
+  - `frequency_weighted_graph`
+  - `source_confidence_graph`
+  - `ontology_path_graph`
+- 상세 설계는 [graph_evidence_scoring_plan.md](docs/graph_evidence_scoring_plan.md)에 기록했다.
+
+다음 액션:
+
+- UI에서는 `IC | Embedding | Hybrid` 중심 구조를 유지하고, graph는 Hybrid 내부 evidence mode로 정리할지 결정한다.
+- 우선 구현 후보는 `frequency_weighted_graph`로 둔다.
