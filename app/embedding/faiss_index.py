@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -16,10 +17,10 @@ class DiseaseEmbeddingIndex:
         self._disease_ids: list[str] = []
         self._vectors: np.ndarray | None = None
 
-    def build(self) -> None:
+    def build(self, cache_dir: Path | None = None) -> None:
         disease_ids: list[str] = []
         vectors: list[np.ndarray] = []
-        phenotype_vectors = self._build_phenotype_vector_cache()
+        phenotype_vectors = self._load_or_build_phenotype_vector_cache(cache_dir)
         for disease_id, profile in self.knowledge.disease_profiles.items():
             term_vectors = [phenotype_vectors[hpo_id] for hpo_id in sorted(profile.phenotype_ids) if hpo_id in phenotype_vectors]
             if not term_vectors:
@@ -37,7 +38,7 @@ class DiseaseEmbeddingIndex:
         self._disease_ids = disease_ids
         self._index = _build_inner_product_index(matrix)
 
-    def save(self, output_dir: Path) -> None:
+    def save(self, output_dir: Path, *, manifest: dict[str, Any] | None = None) -> None:
         if self._index is None:
             raise RuntimeError("index must be built before saving")
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -45,6 +46,8 @@ class DiseaseEmbeddingIndex:
 
         faiss.write_index(self._index, str(output_dir / "disease.faiss"))
         (output_dir / "disease_ids.json").write_text(json.dumps(self._disease_ids, indent=2), encoding="utf-8")
+        if manifest is not None:
+            (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     def load(self, input_dir: Path) -> None:
         import faiss
@@ -109,6 +112,25 @@ class DiseaseEmbeddingIndex:
         texts = [self._text_for_hpo(hpo_id) or hpo_id for hpo_id in hpo_ids]
         vectors = self.embedder.encode(texts)
         return {hpo_id: vectors[index] for index, hpo_id in enumerate(hpo_ids)}
+
+    def _load_or_build_phenotype_vector_cache(self, cache_dir: Path | None) -> dict[str, np.ndarray]:
+        if cache_dir is None:
+            return self._build_phenotype_vector_cache()
+
+        hpo_ids_path = cache_dir / "hpo_ids.json"
+        vectors_path = cache_dir / "hpo_vectors.npz"
+        if hpo_ids_path.exists() and vectors_path.exists():
+            hpo_ids = json.loads(hpo_ids_path.read_text(encoding="utf-8"))
+            vectors = np.load(vectors_path)["vectors"]
+            return {hpo_id: vectors[index] for index, hpo_id in enumerate(hpo_ids)}
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        vectors_by_hpo = self._build_phenotype_vector_cache()
+        hpo_ids = sorted(vectors_by_hpo)
+        vectors = np.vstack([vectors_by_hpo[hpo_id] for hpo_id in hpo_ids]).astype(np.float32)
+        np.savez_compressed(vectors_path, vectors=vectors)
+        hpo_ids_path.write_text(json.dumps(hpo_ids, indent=2), encoding="utf-8")
+        return vectors_by_hpo
 
 
 def _build_inner_product_index(matrix: np.ndarray) -> object:

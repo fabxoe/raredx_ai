@@ -455,9 +455,10 @@ Clinical note 기반 retrieval:
    - graph coverage metric을 추가한다.
 
 6. Embedding retrieval 개선
-   - SapBERT 외 다른 biomedical encoder로 교체 가능한 설정을 정리한다.
-   - HPO embedding cache artifact를 추가한다.
+   - SapBERT 외 다른 biomedical encoder로 교체 가능한 설정은 구현했다.
+   - HPO embedding cache artifact는 구현했다.
    - 작은 curated example 기준 Top-k, MRR 평가 스크립트를 추가한다.
+   - SapBERT, custom sentence-transformer, 향후 graph embedding backend의 latency와 ranking 품질을 비교한다.
 
 7. Re-ranking 개선
    - IC, embedding, graph score scale을 보정한다.
@@ -487,6 +488,47 @@ Clinical note 기반 retrieval:
 - 왜 변경했는지
 - 실행한 명령어와 테스트 결과
 - 남은 한계 또는 다음 액션
+
+---
+
+## 2026-06-28 업데이트
+
+### Disease ranking용 Embedding retrieval 개선
+
+- `sapbert_faiss` 단일 embedding backend 구조를 확장했다.
+- 지원 backend:
+  - `sapbert_faiss`
+  - `custom_sentence_transformer_faiss`
+- `custom_sentence_transformer_faiss`는 사용자가 sentence-transformer model name을 지정해 disease embedding retrieval을 비교할 수 있는 실험용 backend다.
+- FAISS index artifact를 backend/model 조합별 경로에 저장하도록 변경했다.
+  - 예: `data/processed/faiss/sapbert_faiss/`
+- 기존 legacy index 경로도 계속 읽을 수 있게 유지했다.
+  - `data/processed/faiss/disease.faiss`
+- HPO term embedding cache artifact를 추가했다.
+  - 같은 backend/model 조합으로 index를 다시 만들 때 HPO term vector를 재사용할 수 있다.
+- `scripts/build_faiss.py`에 `--backend`, `--model` 옵션을 추가했다.
+- `/api/retrieval/ranking-methods`가 embedding backend/model option을 내려주고, 프론트가 자동 렌더링하도록 정리했다.
+- 프론트 select option은 내부 key 대신 사용자용 label로 표시한다.
+  - `SapBERT · FAISS`
+  - `Custom ST · FAISS`
+
+검증:
+
+- `uv run pytest`
+  - 결과: `28 passed`
+
+남은 한계:
+
+- custom backend는 sentence-transformer 호환 모델을 전제로 한다.
+- 모델별 Top-k, MRR, latency 비교 스크립트는 아직 구현하지 않았다.
+- 대형 biomedical encoder를 처음 사용할 때는 모델 다운로드와 FAISS build 시간이 길 수 있다.
+- 현재 disease embedding은 disease-associated HPO term의 `name + definition` 평균 벡터다. term frequency, disease-specific phenotype frequency, ontology ancestor 정보는 embedding vector 생성에 아직 반영하지 않는다.
+
+다음 액션:
+
+- RareArena sample 또는 curated fixture 기준으로 embedding backend별 Top-k/MRR 평가 스크립트를 추가한다.
+- SapBERT 외 후보 biomedical encoder를 선별해 build/run latency와 ranking 품질을 비교한다.
+- embedding score scale을 IC/graph score와 비교해 hybrid re-ranking 보정을 진행한다.
 
 ---
 

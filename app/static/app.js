@@ -352,7 +352,7 @@ function optionField(className, ownerId, option, optionStore) {
     `;
   }
   if (option.type === "select") {
-    return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}</select></label>`;
+    return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(optionChoiceLabel(option.key, choice))}</option>`).join("")}</select></label>`;
   }
   const inputType = option.type === "number" ? "number" : "text";
   return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
@@ -360,6 +360,22 @@ function optionField(className, ownerId, option, optionStore) {
 
 function optionLabelClass(key) {
   return ["embedding_model", "ic_weight"].includes(key) ? "option-label-pad" : "";
+}
+
+function optionChoiceLabel(key, value) {
+  const labels = {
+    embedding_backend: {
+      sapbert_faiss: "SapBERT · FAISS",
+      custom_sentence_transformer_faiss: "Custom ST · FAISS",
+    },
+    graph_evidence_mode: {
+      local_overlap: "Local overlap",
+      frequency_weighted_graph: "Frequency weighted",
+      gene_path: "Gene path",
+      source_confidence_graph: "Source confidence",
+    },
+  };
+  return labels[key]?.[value] || value;
 }
 
 function bindOptionControls(className, optionStore) {

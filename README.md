@@ -150,6 +150,13 @@ uv run scripts/build_faiss.py
 ```
 
 첫 실행 시 SapBERT model 다운로드와 embedding 계산 때문에 시간이 걸릴 수 있다.
+기본 출력 위치는 `data/processed/faiss/sapbert_faiss/`다. 기존 `data/processed/faiss/disease.faiss` 경로도 읽을 수 있게 유지한다.
+
+다른 sentence-transformer 모델을 비교하려면 별도 backend/model 조합으로 인덱스를 만든다.
+
+```bash
+uv run scripts/build_faiss.py --backend custom_sentence_transformer_faiss --model sentence-transformers/all-MiniLM-L6-v2
+```
 
 8. Neo4j graph 적재
 
@@ -324,7 +331,9 @@ Ranking method capability는 다음 endpoint에서 확인할 수 있다.
 curl http://127.0.0.1:8010/api/retrieval/ranking-methods
 ```
 
-현재 disease embedding backend는 `sapbert_faiss`만 지원한다. 이후 SapBERT 외 embedding backend를 추가할 때는 이 capability에 선택지를 추가하고, 프론트는 자동으로 option을 렌더링한다.
+현재 disease embedding backend는 `sapbert_faiss`와 `custom_sentence_transformer_faiss`를 지원한다.
+`sapbert_faiss`는 SapBERT 고정 비교군이고, `custom_sentence_transformer_faiss`는 모델명을 직접 입력해 sentence-transformer 계열 embedding retrieval을 비교하는 실험용 backend다.
+프론트는 `/api/retrieval/ranking-methods` capability에 내려오는 선택지를 자동으로 렌더링한다.
 
 LLM QC/selection은 mapper가 만든 HPO 후보를 검수하는 후처리 단계다. 새 HPO term을 생성하지 않고, 제공된 후보 HPO ID 중 유지할 항목만 고른다. OpenAI API를 우선 사용할 수 있고, 로컬 실험은 Ollama로 대체할 수 있다.
 

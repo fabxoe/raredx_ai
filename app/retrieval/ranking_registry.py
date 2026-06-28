@@ -1,10 +1,11 @@
 from app.config import Settings
+from app.embedding.backends import DEFAULT_EMBEDDING_BACKEND, EMBEDDING_BACKENDS
 from app.schemas.ranking import RankingMethodCapability, RankingOption
 from app.schemas.retrieval import RankingMethod
 
 
 def ranking_method_capabilities(settings: Settings) -> list[RankingMethodCapability]:
-    embedding_backend = _embedding_backend_label(settings.embedding_model)
+    embedding_backend_choices = list(EMBEDDING_BACKENDS)
     return [
         RankingMethodCapability(
             id="ic",
@@ -26,10 +27,10 @@ def ranking_method_capabilities(settings: Settings) -> list[RankingMethodCapabil
                     key="embedding_backend",
                     label="Disease embedding backend",
                     type="select",
-                    default="sapbert_faiss",
-                    choices=["sapbert_faiss"],
+                    default=DEFAULT_EMBEDDING_BACKEND,
+                    choices=embedding_backend_choices,
                 ),
-                RankingOption(key="embedding_model", label="Model", type="text", default=embedding_backend),
+                RankingOption(key="embedding_model", label="Model", type="text", default=settings.embedding_model),
             ],
         ),
         RankingMethodCapability(
@@ -57,9 +58,10 @@ def ranking_method_capabilities(settings: Settings) -> list[RankingMethodCapabil
                     key="embedding_backend",
                     label="Disease embedding backend",
                     type="select",
-                    default="sapbert_faiss",
-                    choices=["sapbert_faiss"],
+                    default=DEFAULT_EMBEDDING_BACKEND,
+                    choices=embedding_backend_choices,
                 ),
+                RankingOption(key="embedding_model", label="Model", type="text", default=settings.embedding_model),
                 RankingOption(key="ic_weight", label="IC weight", type="number", default=settings.ic_weight),
                 RankingOption(key="embedding_weight", label="Embedding weight", type="number", default=settings.embedding_weight),
                 RankingOption(key="graph_weight", label="Graph weight", type="number", default=settings.graph_weight),
@@ -80,9 +82,3 @@ def ranking_method_label(settings: Settings, method: RankingMethod) -> str:
         if capability.id == method:
             return capability.label
     return method
-
-
-def _embedding_backend_label(model: str) -> str:
-    if model == "cambridgeltl/SapBERT-from-PubMedBERT-fulltext":
-        return "SapBERT PubMedBERT"
-    return model

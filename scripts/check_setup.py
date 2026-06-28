@@ -11,8 +11,17 @@ REQUIRED_FILES = [
     Path("data/processed/phenotypes.json"),
     Path("data/processed/disease_phenotypes.json"),
     Path("data/processed/gene_phenotypes.json"),
-    Path("data/processed/faiss/disease.faiss"),
-    Path("data/processed/faiss/disease_ids.json"),
+]
+
+FAISS_INDEX_OPTIONS = [
+    (
+        Path("data/processed/faiss/sapbert_faiss/disease.faiss"),
+        Path("data/processed/faiss/sapbert_faiss/disease_ids.json"),
+    ),
+    (
+        Path("data/processed/faiss/disease.faiss"),
+        Path("data/processed/faiss/disease_ids.json"),
+    ),
 ]
 
 
@@ -50,6 +59,7 @@ def check_files() -> None:
             print(f"[OK] {path}")
         else:
             print(f"[MISSING] {path}")
+    check_faiss_index()
 
     print("\nIf generated files are missing, run in order:")
     print("  cp .env.example .env")
@@ -59,6 +69,13 @@ def check_files() -> None:
     print("  uv run scripts/build_processed.py")
     print("  uv run scripts/build_faiss.py")
     print("  uv run scripts/load_neo4j.py")
+
+
+def check_faiss_index() -> None:
+    if any(all(path.exists() for path in option) for option in FAISS_INDEX_OPTIONS):
+        print("[OK] data/processed/faiss disease index")
+        return
+    print("[MISSING] data/processed/faiss disease index")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,13 @@
 from functools import cached_property
+from pathlib import Path
 
 from app.config import Settings
+from app.embedding.backends import (
+    DEFAULT_EMBEDDING_BACKEND,
+    index_dir_name,
+    resolve_embedding_model,
+    supported_embedding_backend_keys,
+)
 from app.embedding.biomedical import BiomedicalEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
 from app.etl.processed_store import load_processed_knowledge_base
@@ -17,6 +24,7 @@ from app.schemas.retrieval import CandidateDisease
 class RetrievalService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._embedding_indexes: dict[tuple[str, str], DiseaseEmbeddingIndex] = {}
 
     @cached_property
     def knowledge(self) -> KnowledgeIndex:
@@ -26,12 +34,24 @@ class RetrievalService:
     def ic_ranker(self) -> ICBaselineRanker:
         return ICBaselineRanker(self.knowledge)
 
-    @cached_property
-    def embedding_index(self) -> DiseaseEmbeddingIndex:
-        index = DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(self.settings.embedding_model))
-        index_dir = self.settings.processed_dir / "faiss"
-        if (index_dir / "disease.faiss").exists() and (index_dir / "disease_ids.json").exists():
+    def embedding_index(self, options: dict[str, str | int | float | bool] | None = None) -> DiseaseEmbeddingIndex:
+        ranking_options = options or {}
+        backend = str(ranking_options.get("embedding_backend") or DEFAULT_EMBEDDING_BACKEND)
+        requested_model = str(ranking_options.get("embedding_model") or "").strip() or None
+        model_name = resolve_embedding_model(backend, requested_model)
+        cache_key = (backend, model_name)
+        cached = self._embedding_indexes.get(cache_key)
+        if cached is not None:
+            return cached
+
+        index = DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(model_name))
+        index_dir = self._embedding_index_dir(backend, model_name)
+        legacy_index_dir = self.settings.processed_dir / "faiss"
+        if _faiss_index_exists(index_dir):
             index.load(index_dir)
+        elif backend == DEFAULT_EMBEDDING_BACKEND and _faiss_index_exists(legacy_index_dir):
+            index.load(legacy_index_dir)
+        self._embedding_indexes[cache_key] = index
         return index
 
     @cached_property
@@ -130,9 +150,10 @@ class RetrievalService:
         top_k: int,
         options: dict[str, str | int | float | bool] | None = None,
     ) -> list[CandidateDisease]:
-        _validate_embedding_options(options or {})
+        ranking_options = options or {}
+        _validate_embedding_options(ranking_options)
         self._validate_hpo_terms(hpo_terms)
-        return self.embedding_index.search(hpo_terms, top_k)
+        return self.embedding_index(ranking_options).search(hpo_terms, top_k)
 
     def rank_graph(
         self,
@@ -169,6 +190,9 @@ class RetrievalService:
             embedding_weight=_float_option(options, "embedding_weight", self.settings.embedding_weight),
             graph_weight=_float_option(options, "graph_weight", self.settings.graph_weight),
         )
+
+    def _embedding_index_dir(self, backend: str, model_name: str) -> Path:
+        return self.settings.processed_dir / "faiss" / index_dir_name(backend, model_name)
 
     def _graph_evidence_rank(
         self,
@@ -254,9 +278,11 @@ def _validate_ic_options(options: dict[str, str | int | float | bool]) -> None:
 
 
 def _validate_embedding_options(options: dict[str, str | int | float | bool]) -> None:
-    backend = str(options.get("embedding_backend") or "sapbert_faiss")
-    if backend != "sapbert_faiss":
+    backend = str(options.get("embedding_backend") or DEFAULT_EMBEDDING_BACKEND)
+    if backend not in supported_embedding_backend_keys():
         raise ValueError(f"unsupported disease embedding backend: {backend}")
+    requested_model = str(options.get("embedding_model") or "").strip() or None
+    resolve_embedding_model(backend, requested_model)
 
 
 def _validate_graph_options(options: dict[str, str | int | float | bool]) -> None:
@@ -318,3 +344,7 @@ def _source_confidence_weight(evidence: str | None, source: str | None) -> float
     if "hpo:" in source_text:
         return min(1.0, evidence_weight + 0.05)
     return evidence_weight
+
+
+def _faiss_index_exists(index_dir: Path) -> bool:
+    return (index_dir / "disease.faiss").exists() and (index_dir / "disease_ids.json").exists()
