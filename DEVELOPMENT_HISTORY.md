@@ -499,7 +499,10 @@ Clinical note 기반 retrieval:
 - 지원 backend:
   - `sapbert_faiss`
   - `custom_sentence_transformer_faiss`
+  - `hpo_graph_embedding_faiss`
 - `custom_sentence_transformer_faiss`는 사용자가 sentence-transformer model name을 지정해 disease embedding retrieval을 비교할 수 있는 실험용 backend다.
+- `hpo_graph_embedding_faiss`는 `hp.obo`의 HPO `IS_A` ontology graph에서 random-walk context 기반 HPO node vector를 만들고, disease/patient profile vector를 FAISS로 비교하는 backend다.
+- 여기서 HPO graph embedding은 Neo4j 전체 graph가 아니라 HPO ontology DAG만 사용한다.
 - FAISS index artifact를 backend/model 조합별 경로에 저장하도록 변경했다.
   - 예: `data/processed/faiss/sapbert_faiss/`
 - 기존 legacy index 경로도 계속 읽을 수 있게 유지했다.
@@ -511,6 +514,7 @@ Clinical note 기반 retrieval:
 - 프론트 select option은 내부 key 대신 사용자용 label로 표시한다.
   - `SapBERT · FAISS`
   - `Custom ST · FAISS`
+  - `HPO graph · FAISS`
 
 검증:
 
@@ -520,14 +524,15 @@ Clinical note 기반 retrieval:
 남은 한계:
 
 - custom backend는 sentence-transformer 호환 모델을 전제로 한다.
+- 현재 HPO graph embedding은 빠른 baseline을 위한 deterministic random-walk/hash 방식이다. 엄밀한 Node2Vec skip-gram 학습이나 GCN/GraphSAGE 학습은 아직 구현하지 않았다.
 - 모델별 Top-k, MRR, latency 비교 스크립트는 아직 구현하지 않았다.
 - 대형 biomedical encoder를 처음 사용할 때는 모델 다운로드와 FAISS build 시간이 길 수 있다.
-- 현재 disease embedding은 disease-associated HPO term의 `name + definition` 평균 벡터다. term frequency, disease-specific phenotype frequency, ontology ancestor 정보는 embedding vector 생성에 아직 반영하지 않는다.
+- text embedding backend의 disease embedding은 disease-associated HPO term의 `name + definition` 평균 벡터다. term frequency와 disease-specific phenotype frequency는 embedding vector 생성에 아직 반영하지 않는다.
 
 다음 액션:
 
 - RareArena sample 또는 curated fixture 기준으로 embedding backend별 Top-k/MRR 평가 스크립트를 추가한다.
-- SapBERT 외 후보 biomedical encoder를 선별해 build/run latency와 ranking 품질을 비교한다.
+- SapBERT 외 후보 biomedical encoder와 HPO graph embedding backend의 build/run latency와 ranking 품질을 비교한다.
 - embedding score scale을 IC/graph score와 비교해 hybrid re-ranking 보정을 진행한다.
 
 ---

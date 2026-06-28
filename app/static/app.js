@@ -354,6 +354,15 @@ function optionField(className, ownerId, option, optionStore) {
   if (option.type === "select") {
     return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(optionChoiceLabel(option.key, choice))}</option>`).join("")}</select></label>`;
   }
+  if (option.key === "embedding_model") {
+    const backend = optionStore[ownerId]?.embedding_backend || "sapbert_faiss";
+    if (backend === "sapbert_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="SapBERT PubMedBERT" disabled></label>`;
+    }
+    if (backend === "hpo_graph_embedding_faiss") {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO ontology random-walk" disabled></label>`;
+    }
+  }
   const inputType = option.type === "number" ? "number" : "text";
   return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
 }
@@ -367,6 +376,7 @@ function optionChoiceLabel(key, value) {
     embedding_backend: {
       sapbert_faiss: "SapBERT · FAISS",
       custom_sentence_transformer_faiss: "Custom ST · FAISS",
+      hpo_graph_embedding_faiss: "HPO graph · FAISS",
     },
     graph_evidence_mode: {
       local_overlap: "Local overlap",
@@ -386,6 +396,10 @@ function bindOptionControls(className, optionStore) {
       const ownerOptions = optionStore[control.dataset.owner] || {};
       ownerOptions[control.dataset.key] = readOptionValue(control);
       optionStore[control.dataset.owner] = ownerOptions;
+      if (control.dataset.key === "embedding_backend") {
+        renderRankingOptions();
+        return;
+      }
       if (control.classList.contains("button-choice")) {
         $$(`.${className}.button-choice`).forEach((button) => {
           const sameGroup = button.dataset.owner === control.dataset.owner && button.dataset.key === control.dataset.key;

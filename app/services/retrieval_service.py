@@ -4,12 +4,14 @@ from pathlib import Path
 from app.config import Settings
 from app.embedding.backends import (
     DEFAULT_EMBEDDING_BACKEND,
+    HPO_GRAPH_EMBEDDING_BACKEND,
     index_dir_name,
     resolve_embedding_model,
     supported_embedding_backend_keys,
 )
 from app.embedding.biomedical import BiomedicalEmbedder
 from app.embedding.faiss_index import DiseaseEmbeddingIndex
+from app.embedding.hpo_graph_index import HPOGraphEmbeddingIndex
 from app.etl.processed_store import load_processed_knowledge_base
 from app.llm.phenotype_qc import PhenotypeLLMSelector, build_phenotype_llm_selector
 from app.reranking.hybrid import HybridReranker
@@ -24,7 +26,7 @@ from app.schemas.retrieval import CandidateDisease
 class RetrievalService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._embedding_indexes: dict[tuple[str, str], DiseaseEmbeddingIndex] = {}
+        self._embedding_indexes: dict[tuple[str, str], DiseaseEmbeddingIndex | HPOGraphEmbeddingIndex] = {}
 
     @cached_property
     def knowledge(self) -> KnowledgeIndex:
@@ -34,7 +36,10 @@ class RetrievalService:
     def ic_ranker(self) -> ICBaselineRanker:
         return ICBaselineRanker(self.knowledge)
 
-    def embedding_index(self, options: dict[str, str | int | float | bool] | None = None) -> DiseaseEmbeddingIndex:
+    def embedding_index(
+        self,
+        options: dict[str, str | int | float | bool] | None = None,
+    ) -> DiseaseEmbeddingIndex | HPOGraphEmbeddingIndex:
         ranking_options = options or {}
         backend = str(ranking_options.get("embedding_backend") or DEFAULT_EMBEDDING_BACKEND)
         requested_model = str(ranking_options.get("embedding_model") or "").strip() or None
@@ -44,7 +49,7 @@ class RetrievalService:
         if cached is not None:
             return cached
 
-        index = DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(model_name))
+        index = self._new_embedding_index(backend, model_name)
         index_dir = self._embedding_index_dir(backend, model_name)
         legacy_index_dir = self.settings.processed_dir / "faiss"
         if _faiss_index_exists(index_dir):
@@ -193,6 +198,15 @@ class RetrievalService:
 
     def _embedding_index_dir(self, backend: str, model_name: str) -> Path:
         return self.settings.processed_dir / "faiss" / index_dir_name(backend, model_name)
+
+    def _new_embedding_index(
+        self,
+        backend: str,
+        model_name: str,
+    ) -> DiseaseEmbeddingIndex | HPOGraphEmbeddingIndex:
+        if backend == HPO_GRAPH_EMBEDDING_BACKEND:
+            return HPOGraphEmbeddingIndex(self.knowledge)
+        return DiseaseEmbeddingIndex(self.knowledge, BiomedicalEmbedder(model_name))
 
     def _graph_evidence_rank(
         self,
