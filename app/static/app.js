@@ -321,6 +321,13 @@ function optionField(className, ownerId, option, optionStore) {
   const current = optionStore[ownerId]?.[option.key] ?? option.default;
   const dataAttrs = `data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
   const attrs = `class="${escapeHtml(className)}" ${dataAttrs}`;
+  if (option.key === "embedding_model") {
+    const backend = optionStore[ownerId]?.embedding_backend || "sapbert_faiss";
+    const displayName = embeddingModelDisplayName(backend);
+    if (displayName) {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="${escapeHtml(displayName)}" disabled></label>`;
+    }
+  }
   if (option.key === "max_genes") {
     return `
       <div class="option-wide gene-preview-option">
@@ -354,26 +361,20 @@ function optionField(className, ownerId, option, optionStore) {
   if (option.type === "select") {
     return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><select ${attrs}>${option.choices.map((choice) => `<option value="${escapeHtml(choice)}" ${choice === current ? "selected" : ""}>${escapeHtml(optionChoiceLabel(option.key, choice))}</option>`).join("")}</select></label>`;
   }
-  if (option.key === "embedding_model") {
-    const backend = optionStore[ownerId]?.embedding_backend || "sapbert_faiss";
-    if (backend === "sapbert_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="SapBERT" disabled></label>`;
-    }
-    if (backend === "pubmedbert_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="PubMedBERT" disabled></label>`;
-    }
-    if (backend === "biosentvec_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="BioSentVec external" disabled></label>`;
-    }
-    if (backend === "hpo_deepwalk_faiss" || backend === "hpo_graph_embedding_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO DeepWalk random-walk" disabled></label>`;
-    }
-    if (backend === "hpo_node2vec_faiss") {
-      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="HPO Node2Vec biased walk" disabled></label>`;
-    }
-  }
   const inputType = option.type === "number" ? "number" : "text";
   return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
+}
+
+function embeddingModelDisplayName(backend) {
+  const labels = {
+    sapbert_faiss: "SapBERT",
+    pubmedbert_faiss: "PubMedBERT",
+    biosentvec_faiss: "BioSentVec external model",
+    hpo_deepwalk_faiss: "HPO DeepWalk random-walk",
+    hpo_graph_embedding_faiss: "HPO DeepWalk random-walk",
+    hpo_node2vec_faiss: "HPO Node2Vec biased walk",
+  };
+  return labels[backend] || "";
 }
 
 function optionLabelClass(key) {
