@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
 from app.llm.model_catalog import available_chat_models
+from app.retrieval.negation import final_selected_hpo_terms
 from app.retrieval.ranking_registry import ranking_method_capabilities
 from app.schemas.ranking import RankingMethodCapability
 from app.schemas.retrieval import (
@@ -117,9 +118,9 @@ def _retrieve_note(request: ClinicalNoteRetrievalRequest, mode: str) -> Clinical
             mapper_mode=request.hpo_mapper,
             mapper_options=request.hpo_mapper_options,
         )
-        hpo_terms = [item.hpo_id for item in extracted]
+        hpo_terms = final_selected_hpo_terms(extracted)
         if not hpo_terms:
-            raise ValueError("no HPO terms could be extracted from clinical_note")
+            raise ValueError("no usable HPO terms could be extracted from clinical_note")
         if mode == "ic":
             candidates = service.rank_ic(hpo_terms, request.top_k, options=request.ranking_options)
         elif mode == "embedding":

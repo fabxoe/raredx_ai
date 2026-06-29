@@ -639,3 +639,46 @@ Clinical note 기반 retrieval:
 
 - `uv run pytest`
   - 결과: `31 passed`
+
+---
+
+## 2026-06-29 업데이트
+
+### HPO extraction negation 6종 비교 구현
+
+- clinical note에서 추출된 HPO 후보에 대해 mapper 공통 negation/context 후처리를 추가했다.
+- UI의 `HPO extraction` 블럭에서 `Negation` 옵션을 선택할 수 있다.
+  - `off`
+  - `simple_trigger`
+  - `negex_lite`
+  - `medspacy_context`
+  - `status_weight`
+  - `llm_qc`
+- 적용 대상 mapper:
+  - `Dictionary`
+  - `Lightweight`
+  - `Original`
+- 내부 조합 경로인 `dictionary_doc2hpo`도 같은 후처리 함수를 재사용할 수 있게 했다.
+- API 응답의 `extracted_phenotypes[].metadata`에 다음 정보를 추가했다.
+  - `context_label`
+  - `context_method`
+  - `context_trigger`
+  - `context_scope`
+  - `context_weight`
+  - `final_selected`
+  - `exclusion_reason`
+- disease ranking 입력에는 `final_selected=false`인 HPO를 제외한다.
+- mapper comparison UI에서 `Used / Not used`, context label, trigger를 확인할 수 있게 했다.
+
+현재 한계:
+
+- `medspacy_context`는 medspaCy가 설치되어 있어야 하며, 미설치 시 명확한 error를 반환한다.
+- `llm_qc`는 `RAREDX_LLM_PROVIDER`와 API key 또는 로컬 LLM 설정이 필요하다.
+- v1은 negation 중심이며 family history, historical, uncertain context는 다음 단계에서 확장한다.
+
+검증:
+
+- `uv run pytest tests/test_negation.py tests/test_note_retrieval.py tests/test_api_retrieval.py -q`
+  - 결과: `25 passed`
+- `uv run pytest -q`
+  - 결과: `38 passed`

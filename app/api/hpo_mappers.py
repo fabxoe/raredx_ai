@@ -3,6 +3,7 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from app.config import get_settings
+from app.retrieval.negation import final_selected_hpo_terms
 from app.retrieval.mapper_registry import mapper_capabilities, mapper_label
 from app.schemas.hpo_mapper import (
     HPOMapperCapability,
@@ -53,7 +54,7 @@ def compare_hpo_mappers(request: HPOMapperCompareRequest) -> HPOMapperCompareRes
                 mapper_mode=mapper_id,
                 mapper_options=request.mapper_options.get(mapper_id, {}),
             )
-            hpo_terms = [item.hpo_id for item in extracted]
+            hpo_terms = final_selected_hpo_terms(extracted)
             candidates = []
             if hpo_terms:
                 if request.ranking_method == "hybrid":

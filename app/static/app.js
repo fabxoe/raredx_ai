@@ -135,7 +135,11 @@ async function runAnalysis() {
       });
       runMapperCompare(note);
       renderLlmStatusFromResponse(rankingResponse);
-      state.terms = new Map(rankingResponse.extracted_phenotypes.map((item) => [item.hpo_id, item.name]));
+      state.terms = new Map(
+        rankingResponse.extracted_phenotypes
+          .filter(isFinalSelectedPhenotype)
+          .map((item) => [item.hpo_id, item.name])
+      );
       renderTerms();
     } else {
       if (state.terms.size === 0) throw new Error("HPO term을 하나 이상 선택하세요.");
@@ -187,13 +191,21 @@ async function runMapperCompare(note) {
     .map((mapper) => mapper.id);
   if (!mappers.length) return;
   try {
+    const activeOptions = state.mapperOptions[state.hpoMapper] || {};
+    const mapperOptions = { ...state.mapperOptions };
+    mappers.forEach((mapperId) => {
+      mapperOptions[mapperId] = {
+        ...(mapperOptions[mapperId] || {}),
+        negation_mode: mapperOptions[mapperId]?.negation_mode || activeOptions.negation_mode || "off",
+      };
+    });
     const response = await postJson("/api/hpo-mappers/compare", {
       clinical_note: note,
       mappers,
       top_k: Number($("#top-k").value),
       max_hpo_terms: 30,
       ranking_method: state.method,
-      mapper_options: state.mapperOptions,
+      mapper_options: mapperOptions,
       ranking_options: state.rankingOptions[state.method] || {},
     });
     renderMapperCompare(response.results);
@@ -220,11 +232,15 @@ function renderMapperCompare(results) {
         ${results.map((result) => {
           const topDisease = result.candidates?.[0];
           const rankLabel = topDisease ? `${topDisease.disease_name} (${Number(topDisease.score).toFixed(2)})` : "—";
-          const status = result.error ? result.error : `${result.extracted_phenotypes.length} HPO · ${rankLabel}`;
+          const selectedCount = result.extracted_phenotypes?.filter(isFinalSelectedPhenotype).length || 0;
+          const totalCount = result.extracted_phenotypes?.length || 0;
+          const excludedCount = Math.max(0, totalCount - selectedCount);
+          const status = result.error ? result.error : `${selectedCount}/${totalCount} used · ${excludedCount} excluded · ${rankLabel}`;
           return `
             <div class="mapper-compare-row ${result.error ? "has-error" : ""}">
               <strong>${escapeHtml(result.label)}</strong>
               <span>${escapeHtml(status)}</span>
+              ${result.error ? "" : phenotypeContextPreview(result.extracted_phenotypes)}
             </div>
           `;
         }).join("")}
@@ -441,6 +457,14 @@ function optionChoiceLabel(key, value) {
       frequency_weighted_graph: "Frequency weighted",
       gene_path: "Gene path",
       source_confidence_graph: "Source confidence",
+    },
+    negation_mode: {
+      off: "Off",
+      simple_trigger: "Simple trigger",
+      negex_lite: "NegEx-lite",
+      medspacy_context: "medspaCy context",
+      status_weight: "Status weight",
+      llm_qc: "LLM QC",
     },
   };
   return labels[key]?.[value] || value;
@@ -691,7 +715,9 @@ function hideError() { $("#query-error").hidden = true; }
 function renderLlmStatusFromResponse(response) {
   const options = state.mapperOptions[state.hpoMapper] || {};
   const provider = String(options.llm_provider || "off").toLowerCase();
-  const requested = Boolean(options.use_llm) || String(options.protocol || "").toLowerCase() === "p3_llm_selection";
+  const requested = Boolean(options.use_llm)
+    || String(options.protocol || "").toLowerCase() === "p3_llm_selection"
+    || String(options.negation_mode || "").toLowerCase() === "llm_qc";
   if (state.mode !== "note" || !requested || provider === "off") {
     hideLlmStatus();
     return;
@@ -708,7 +734,9 @@ function renderLlmStatusFromResponse(response) {
 function renderLlmStatusFromError(error) {
   const options = state.mapperOptions[state.hpoMapper] || {};
   const provider = String(options.llm_provider || "off").toLowerCase();
-  const requested = Boolean(options.use_llm) || String(options.protocol || "").toLowerCase() === "p3_llm_selection";
+  const requested = Boolean(options.use_llm)
+    || String(options.protocol || "").toLowerCase() === "p3_llm_selection"
+    || String(options.negation_mode || "").toLowerCase() === "llm_qc";
   if (!requested || provider === "off") return;
   const message = String(error?.message || "");
   if (/llm|openai|api_key|chat model|model/i.test(message)) {
@@ -727,6 +755,27 @@ function hideLlmStatus() { $("#llm-status").hidden = true; }
 
 function providerLabel(provider) {
   return provider === "openai" ? "OpenAI" : provider === "ollama" ? "Ollama" : provider;
+}
+
+function isFinalSelectedPhenotype(item) {
+  return item?.metadata?.final_selected !== false;
+}
+
+function phenotypeContextPreview(phenotypes) {
+  if (!phenotypes?.length) return "";
+  const rows = phenotypes.slice(0, 4).map((item) => {
+    const selected = isFinalSelectedPhenotype(item);
+    const label = item.metadata?.context_label || "present";
+    const trigger = item.metadata?.context_trigger ? ` · trigger: ${item.metadata.context_trigger}` : "";
+    const badge = selected ? "Used" : "Not used";
+    return `
+      <li class="${selected ? "" : "is-excluded"}">
+        <span>${escapeHtml(badge)}</span>
+        ${escapeHtml(item.name)} · ${escapeHtml(label)}${escapeHtml(trigger)}
+      </li>
+    `;
+  }).join("");
+  return `<ul class="phenotype-context-list">${rows}</ul>`;
 }
 
 function escapeHtml(value) {

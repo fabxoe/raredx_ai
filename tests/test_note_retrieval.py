@@ -52,6 +52,60 @@ def test_note_ic_endpoint(tmp_path: Path, monkeypatch) -> None:
     assert body["candidates"][0]["disease_id"] == "OMIM:312750"
 
 
+def test_note_ic_endpoint_excludes_negated_hpo_from_ranking(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/note/ic",
+        json={
+            "clinical_note": "Patient denies seizure and has microcephaly.",
+            "top_k": 1,
+            "hpo_mapper_options": {"negation_mode": "negex_lite"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query_hpo_terms"] == ["HP:0000252"]
+    by_id = {item["hpo_id"]: item for item in body["extracted_phenotypes"]}
+    assert by_id["HP:0001250"]["metadata"]["context_label"] == "negated"
+    assert by_id["HP:0001250"]["metadata"]["final_selected"] is False
+
+
+def test_note_ic_endpoint_off_negation_keeps_negated_hpo(tmp_path: Path, monkeypatch) -> None:
+    kb = load_knowledge_base(
+        hpo_obo_path=FIXTURES / "hp.obo",
+        phenotype_hpoa_path=FIXTURES / "phenotype.hpoa",
+        genes_to_phenotype_path=FIXTURES / "genes_to_phenotype.txt",
+    )
+    save_knowledge_base(kb, tmp_path)
+    monkeypatch.setenv("RAREDX_PROCESSED_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    get_retrieval_service.cache_clear()
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/api/retrieval/note/ic",
+        json={
+            "clinical_note": "No seizure was observed.",
+            "top_k": 1,
+            "hpo_mapper_options": {"negation_mode": "off"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["query_hpo_terms"] == ["HP:0001250"]
+
+
 def test_note_endpoint_can_disable_mapper(tmp_path: Path, monkeypatch) -> None:
     kb = load_knowledge_base(
         hpo_obo_path=FIXTURES / "hp.obo",

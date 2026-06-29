@@ -444,6 +444,27 @@ h3 { font-size: 14px; }
   background: #fff1f1;
 }
 .mapper-compare-row.has-error span { color: var(--red); }
+.phenotype-context-list {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.phenotype-context-list li {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+.phenotype-context-list li span {
+  display: inline-flex;
+  min-width: 48px;
+  margin-right: 4px;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+}
+.phenotype-context-list li.is-excluded span { color: var(--red); }
 
 .input-section, .field-group { margin-top: 17px; }
 .section-block {

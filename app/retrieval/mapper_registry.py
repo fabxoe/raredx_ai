@@ -10,6 +10,7 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
             label="Dictionary",
             description="HPO name/synonym phrase matcher. No external service required.",
             configured=True,
+            options=_context_options(settings),
         ),
         HPOMapperCapability(
             id="doc2hpo",
@@ -17,6 +18,7 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
             description="RARE_DX_AI-compatible Doc2HPO endpoint for embedding-based HPO mapping.",
             configured=bool(settings.doc2hpo_url),
             options=[
+                *_context_options(settings),
                 HPOMapperOption(key="threshold", label="Threshold", type="number", default=0.70),
                 HPOMapperOption(key="candidate_limit", label="Candidates", type="number", default=30),
             ],
@@ -27,6 +29,7 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
             description="Adapter for the original UoS-HGIG/HPO-Mapper service.",
             configured=bool(settings.original_hpo_mapper_url),
             options=[
+                *_context_options(settings),
                 HPOMapperOption(
                     key="protocol",
                     label="Protocol",
@@ -45,20 +48,6 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
                     default="50",
                     choices=["50", "100", "1000", "all"],
                 ),
-                HPOMapperOption(
-                    key="llm_provider",
-                    label="LLM provider",
-                    type="select",
-                    default=settings.llm_provider,
-                    choices=["off", "openai", "ollama"],
-                ),
-                HPOMapperOption(
-                    key="chat_model",
-                    label="Chat model",
-                    type="select",
-                    default=settings.openai_model,
-                    choices=[settings.openai_model],
-                ),
             ],
         ),
         HPOMapperCapability(
@@ -66,12 +55,50 @@ def mapper_capabilities(settings: Settings) -> list[HPOMapperCapability]:
             label="Dictionary + Lightweight",
             description="Merge dictionary and lightweight Doc2HPO-compatible mapper results.",
             configured=bool(settings.doc2hpo_url),
+            options=_context_options(settings),
         ),
         HPOMapperCapability(
             id="off",
             label="Off",
             description="Disable note-to-HPO mapping. Use direct HPO term input instead.",
             configured=True,
+        ),
+    ]
+
+
+def _negation_option() -> HPOMapperOption:
+    return HPOMapperOption(
+        key="negation_mode",
+        label="Negation",
+        type="select",
+        default="off",
+        choices=[
+            "off",
+            "simple_trigger",
+            "negex_lite",
+            "medspacy_context",
+            "status_weight",
+            "llm_qc",
+        ],
+    )
+
+
+def _context_options(settings: Settings) -> list[HPOMapperOption]:
+    return [
+        _negation_option(),
+        HPOMapperOption(
+            key="llm_provider",
+            label="LLM provider",
+            type="select",
+            default=settings.llm_provider,
+            choices=["off", "openai", "ollama"],
+        ),
+        HPOMapperOption(
+            key="chat_model",
+            label="Chat model",
+            type="select",
+            default=settings.openai_model,
+            choices=[settings.openai_model],
         ),
     ]
 

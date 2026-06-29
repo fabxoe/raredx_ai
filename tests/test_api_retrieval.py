@@ -159,7 +159,10 @@ def test_hpo_mapper_capabilities_endpoint() -> None:
     assert {"dictionary", "doc2hpo", "original_hpo_mapper", "off"}.issubset(ids)
     original = next(item for item in body if item["id"] == "original_hpo_mapper")
     option_keys = {item["key"] for item in original["options"]}
-    assert {"protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)
+    assert {"negation_mode", "protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)
+    for mapper_id in ("dictionary", "doc2hpo", "original_hpo_mapper"):
+        mapper = next(item for item in body if item["id"] == mapper_id)
+        assert "negation_mode" in {item["key"] for item in mapper["options"]}
     chat_model = next(item for item in original["options"] if item["key"] == "chat_model")
     assert chat_model["type"] == "select"
     assert chat_model["default"] == "gpt-4o-mini"

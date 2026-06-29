@@ -20,6 +20,7 @@ from app.reranking.hybrid import HybridReranker
 from app.retrieval.doc2hpo_mapper import Doc2HPOMapper
 from app.retrieval.ic_baseline import ICBaselineRanker
 from app.retrieval.knowledge import KnowledgeIndex
+from app.retrieval.negation import apply_negation_context
 from app.retrieval.note_matcher import ClinicalNoteMatcher, ExtractedPhenotype
 from app.retrieval.original_hpo_mapper import OriginalHPOMapperAdapter
 from app.schemas.retrieval import CandidateDisease
@@ -111,20 +112,30 @@ class RetrievalService:
         if mapper_mode == "off":
             raise ValueError("hpo_mapper is off; use HPO terms input or enable a mapper")
         if mapper_mode == "dictionary":
-            return self.note_matcher.extract(clinical_note, limit=limit)
-        if mapper_mode == "doc2hpo":
-            return self.doc2hpo_mapper.extract(clinical_note, limit=limit, options=options)
-        if mapper_mode == "original_hpo_mapper":
-            return self.original_hpo_mapper.extract(clinical_note, limit=limit, options=options)
-        if mapper_mode == "dictionary_doc2hpo":
-            return _merge_extracted(
+            extracted = self.note_matcher.extract(clinical_note, limit=limit)
+        elif mapper_mode == "doc2hpo":
+            extracted = self.doc2hpo_mapper.extract(clinical_note, limit=limit, options=options)
+        elif mapper_mode == "original_hpo_mapper":
+            extracted = self.original_hpo_mapper.extract(clinical_note, limit=limit, options=options)
+        elif mapper_mode == "dictionary_doc2hpo":
+            extracted = _merge_extracted(
                 [
                     *self.note_matcher.extract(clinical_note, limit=limit),
                     *self.doc2hpo_mapper.extract(clinical_note, limit=limit, options=options),
                 ],
                 limit=limit,
             )
-        raise ValueError(f"unsupported hpo_mapper: {mapper_mode}")
+        else:
+            raise ValueError(f"unsupported hpo_mapper: {mapper_mode}")
+
+        negation_mode = str(options.get("negation_mode") or "off")
+        llm_selector = self.build_llm_selector(options) if negation_mode == "llm_qc" else None
+        return apply_negation_context(
+            clinical_note=clinical_note,
+            extracted=extracted,
+            mode=negation_mode,
+            llm_selector=llm_selector,
+        )
 
     def search_phenotypes(self, query: str, limit: int = 10) -> list[tuple[str, str]]:
         normalized = query.strip().lower()
