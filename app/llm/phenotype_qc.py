@@ -1,4 +1,5 @@
 import json
+import re
 import urllib.error
 import urllib.request
 from dataclasses import replace
@@ -180,6 +181,8 @@ def _post_json(request: urllib.request.Request, timeout_seconds: float) -> dict[
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(_format_http_error(exc)) from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"LLM request failed: {exc}") from exc
     except (json.JSONDecodeError, KeyError, IndexError) as exc:
@@ -200,3 +203,45 @@ def _string_set(value: Any) -> set[str]:
     if not isinstance(value, list):
         return set()
     return {item for item in value if isinstance(item, str)}
+
+
+def _format_http_error(exc: urllib.error.HTTPError) -> str:
+    detail = _extract_error_detail(exc)
+    lower_detail = detail.lower()
+    if exc.code == 401:
+        reason = "OpenAI API key is invalid, expired, or not available to this server process."
+    elif exc.code == 402 or "insufficient_quota" in lower_detail or "quota" in lower_detail or "billing" in lower_detail:
+        reason = "OpenAI quota or billing credit is not available."
+    elif exc.code == 403:
+        reason = "OpenAI API key does not have access to the requested model or project."
+    elif exc.code == 429:
+        reason = "OpenAI rate limit or quota limit was reached."
+    else:
+        reason = f"LLM provider returned HTTP {exc.code}."
+
+    if detail:
+        return f"LLM request failed: {reason} ({detail})"
+    return f"LLM request failed: {reason}"
+
+
+def _extract_error_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        payload = exc.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return _redact_secrets(payload[:300])
+    error = data.get("error")
+    if not isinstance(error, dict):
+        return ""
+    message = str(error.get("message") or "").strip()
+    error_type = str(error.get("type") or "").strip()
+    code = str(error.get("code") or "").strip()
+    parts = [part for part in (error_type, code, message) if part]
+    return _redact_secrets(" / ".join(parts)[:500])
+
+
+def _redact_secrets(text: str) -> str:
+    return re.sub(r"sk-[A-Za-z0-9_*\\-]{8,}", "[redacted_api_key]", text)
