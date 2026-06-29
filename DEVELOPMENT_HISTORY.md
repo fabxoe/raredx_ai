@@ -682,3 +682,22 @@ Clinical note 기반 retrieval:
   - 결과: `25 passed`
 - `uv run pytest -q`
   - 결과: `38 passed`
+
+---
+
+## 2026-06-29 업데이트
+
+### medspaCy negation mode 실행 환경 보강
+
+- `medspacy_context` 선택 시 medspaCy가 설치되어 있지 않아 발생하던 오류를 해결했다.
+- 프로젝트 Python 범위를 `>=3.12,<3.14`로 제한하고 `.python-version`을 추가해 Python 3.14에서 spaCy wheel을 찾지 못하는 문제를 피했다.
+- `medspacy` 의존성을 기본 dependency에 추가했다.
+- medspaCy mode가 단순 import 확인에 그치지 않도록, 기존 mapper가 추출한 HPO 후보를 spaCy entity로 주입한 뒤 `medspacy_context`를 실행하게 수정했다.
+- `No seizure was observed. Patient has microcephaly.` 예시에서 seizure는 `negated / final_selected=false`, microcephaly는 `present / final_selected=true`로 처리되는 것을 확인했다.
+
+검증:
+
+- `uv run pytest tests/test_negation.py -q`
+  - 결과: `6 passed`
+- `uv run pytest -q`
+  - 결과: `39 passed`

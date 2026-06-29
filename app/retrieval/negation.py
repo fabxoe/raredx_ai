@@ -108,26 +108,48 @@ def _annotate_with_medspacy(
 ) -> list[ExtractedPhenotype]:
     try:
         import medspacy  # type: ignore[import-not-found]
+        from loguru import logger
+        from spacy.util import filter_spans
     except ImportError as exc:
         raise RuntimeError("medspaCy negation mode requires medspaCy. Install medspacy before selecting medspacy_context.") from exc
 
     try:
+        logger.disable("PyRuSH")
         nlp = medspacy.load()
-        doc = nlp(clinical_note)
+        doc = nlp.make_doc(clinical_note)
+        for name, pipe in nlp.pipeline:
+            if name == "medspacy_context":
+                break
+            doc = pipe(doc)
+
+        spans = []
+        span_key_by_index: dict[int, tuple[int, int]] = {}
+        for index, item in enumerate(extracted):
+            match_span = _find_note_span(clinical_note, item)
+            if match_span is None:
+                continue
+            start, end = match_span
+            span = doc.char_span(start, end, label="HPO", alignment_mode="expand")
+            if span is None:
+                continue
+            spans.append(span)
+            span_key_by_index[index] = (span.start_char, span.end_char)
+
+        doc.ents = filter_spans(spans)
+        if "medspacy_context" not in nlp.pipe_names:
+            raise RuntimeError("medspaCy context pipeline does not include medspacy_context.")
+        doc = nlp.get_pipe("medspacy_context")(doc)
     except Exception as exc:
         raise RuntimeError(f"medspaCy context pipeline could not be initialized: {exc}") from exc
 
+    entity_by_key = {(ent.start_char, ent.end_char): ent for ent in getattr(doc, "ents", [])}
     output: list[ExtractedPhenotype] = []
-    for item in extracted:
-        matched = _normalize(item.matched_text or item.name)
-        negated = False
-        trigger = ""
-        for ent in getattr(doc, "ents", []):
-            ent_text = _normalize(getattr(ent, "text", ""))
-            if matched and (matched in ent_text or ent_text in matched):
-                negated = bool(getattr(getattr(ent, "_", None), "is_negated", False))
-                trigger = "medspacy_context"
-                break
+    for index, item in enumerate(extracted):
+        span_key = span_key_by_index.get(index)
+        ent = entity_by_key.get(span_key) if span_key is not None else None
+        negated = bool(ent is not None and getattr(ent._, "is_negated", False))
+        trigger = _medspacy_trigger(ent) if ent is not None else ""
+        scope = getattr(getattr(ent, "sent", None), "text", "") if ent is not None else _sentence_for_match(clinical_note, item)
         if negated:
             output.append(
                 _with_context(
@@ -135,14 +157,14 @@ def _annotate_with_medspacy(
                     "negated",
                     "medspacy_context",
                     trigger=trigger,
-                    scope=_sentence_for_match(clinical_note, item),
+                    scope=scope,
                     weight=0.0,
                     selected=False,
                     exclusion_reason="negated",
                 )
             )
         else:
-            output.append(_with_context(item, "present", "medspacy_context", weight=1.0, selected=True))
+            output.append(_with_context(item, "present", "medspacy_context", trigger=trigger, scope=scope, weight=1.0, selected=True))
     return output
 
 
@@ -211,6 +233,30 @@ def _sentence_for_match(clinical_note: str, item: ExtractedPhenotype) -> str:
         if any(_normalize(candidate) in normalized_sentence for candidate in candidates if candidate):
             return sentence.strip()
     return clinical_note.strip()[:500]
+
+
+def _find_note_span(clinical_note: str, item: ExtractedPhenotype) -> tuple[int, int] | None:
+    for candidate in (item.matched_text, item.name):
+        if not candidate:
+            continue
+        pattern = _loose_text_pattern(candidate)
+        match = re.search(pattern, clinical_note, flags=re.IGNORECASE)
+        if match is not None:
+            return match.start(), match.end()
+    return None
+
+
+def _loose_text_pattern(text: str) -> str:
+    tokens = [re.escape(token) for token in _normalize(text).split() if token]
+    if not tokens:
+        return r"$^"
+    return rf"(?<![a-z0-9]){r'[^a-z0-9]+'.join(tokens)}(?![a-z0-9])"
+
+
+def _medspacy_trigger(ent: object) -> str:
+    modifiers = getattr(getattr(ent, "_", None), "modifiers", []) or []
+    categories = [str(getattr(modifier, "category", "")) for modifier in modifiers]
+    return ", ".join(category for category in categories if category) or "medspacy_context"
 
 
 def _find_negation_trigger(sentence: str, item: ExtractedPhenotype, *, use_window: bool) -> str | None:

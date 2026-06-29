@@ -74,3 +74,22 @@ def test_medspacy_mode_reports_missing_dependency(monkeypatch: pytest.MonkeyPatc
             [_phenotype("HP:0001250", "Seizure", "seizure")],
             mode="medspacy_context",
         )
+
+
+def test_medspacy_context_excludes_negated_hpo() -> None:
+    extracted = [
+        _phenotype("HP:0001250", "Seizure", "seizure"),
+        _phenotype("HP:0000252", "Microcephaly", "microcephaly"),
+    ]
+
+    annotated = apply_negation_context(
+        "No seizure was observed. Patient has microcephaly.",
+        extracted,
+        mode="medspacy_context",
+    )
+
+    assert final_selected_hpo_terms(annotated) == ["HP:0000252"]
+    by_id = {item.hpo_id: item for item in annotated}
+    assert by_id["HP:0001250"].metadata["context_label"] == "negated"
+    assert by_id["HP:0001250"].metadata["context_method"] == "medspacy_context"
+    assert by_id["HP:0000252"].metadata["context_label"] == "present"
