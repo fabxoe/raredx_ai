@@ -101,10 +101,10 @@ jobs:
           pkill -f 'uvicorn app.original_hpo_mapper_wrapper:app' || true
           sleep 2
 
-          nohup "$UV_BIN" run uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" > "$APP_LOG" 2>&1 &
+          env -u RUNNER_TRACKING_ID nohup "$UV_BIN" run uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" > "$APP_LOG" 2>&1 &
           echo $! > /tmp/raredx_app.pid
 
-          nohup "$UV_BIN" run uvicorn app.original_hpo_mapper_wrapper:app --host 127.0.0.1 --port "$WRAPPER_PORT" > "$WRAPPER_LOG" 2>&1 &
+          env -u RUNNER_TRACKING_ID nohup "$UV_BIN" run uvicorn app.original_hpo_mapper_wrapper:app --host 127.0.0.1 --port "$WRAPPER_PORT" > "$WRAPPER_LOG" 2>&1 &
           echo $! > /tmp/raredx_wrapper.pid
 
       - name: Health check
