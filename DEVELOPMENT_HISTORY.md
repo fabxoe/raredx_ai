@@ -673,7 +673,7 @@ Clinical note 기반 retrieval:
 현재 한계:
 
 - `medspacy_context`는 medspaCy가 설치되어 있어야 하며, 미설치 시 명확한 error를 반환한다.
-- `llm_qc`는 `RAREDX_LLM_PROVIDER`와 API key 또는 로컬 LLM 설정이 필요하다.
+- `llm_qc`는 negation 전용 LLM provider/model 설정과 API key 또는 로컬 LLM 설정이 필요하다.
 - v1은 negation 중심이며 family history, historical, uncertain context는 다음 단계에서 확장한다.
 
 검증:
@@ -701,3 +701,23 @@ Clinical note 기반 retrieval:
   - 결과: `6 passed`
 - `uv run pytest -q`
   - 결과: `39 passed`
+
+---
+
+## 2026-06-29 업데이트
+
+### Extraction LLM과 Negation LLM 설정 분리
+
+- 기존에는 HPO extraction 블럭의 `LLM provider / Chat model`이 Original HPO-Mapper의 extraction LLM과 negation `llm_qc` 후처리에 함께 쓰일 수 있어 역할이 모호했다.
+- LLM 설정을 두 종류로 분리했다.
+  - `Extraction LLM / Extraction model`: Original HPO-Mapper의 `p3_llm_selection` 또는 `Use LLM`에서 HPO 후보 선택에 사용한다.
+  - `Negation LLM / Negation model`: `Negation = LLM QC`일 때만 부정/문맥 판정 후처리에 사용한다.
+- `Dictionary`, `Lightweight`, `Original` 모두 negation 후처리 옵션을 갖지만, extraction LLM 옵션은 현재 `Original` mapper에만 노출한다.
+- 프론트에서는 `Negation LLM` 설정이 `Negation = LLM QC`일 때만 활성화되도록 했다.
+- API payload도 mapper 기본값과 사용자 선택값을 병합해 보내도록 변경해, negation LLM 기본값이 extraction LLM 설정을 의도치 않게 상속하지 않도록 했다.
+- LLM 호출 상태 표시는 `Extraction OpenAI/Ollama LLM 호출성공/실패`, `Negation OpenAI/Ollama LLM 호출성공/실패`처럼 목적별로 구분한다.
+
+현재 한계:
+
+- OpenAI model 목록은 가능한 경우 `/v1/models`에서 가져오지만, 실패하면 `gpt-4o-mini`로 fallback한다.
+- Original HPO-Mapper remote service가 LLM 사용 여부 metadata를 충분히 반환하지 않으면 extraction LLM 상태가 보수적으로 실패로 보일 수 있다.

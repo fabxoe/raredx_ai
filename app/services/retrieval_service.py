@@ -94,11 +94,24 @@ class RetrievalService:
             llm_selector_factory=self.build_llm_selector,
         )
 
-    def build_llm_selector(self, options: dict[str, str | int | float | bool]) -> PhenotypeLLMSelector | None:
-        provider = str(options.get("llm_provider") or self.settings.llm_provider).strip().lower()
+    def build_llm_selector(
+        self,
+        options: dict[str, str | int | float | bool],
+        *,
+        provider_key: str = "llm_provider",
+        model_key: str = "chat_model",
+        allow_legacy_provider: bool = False,
+    ) -> PhenotypeLLMSelector | None:
+        provider_value = options.get(provider_key)
+        if provider_value is None and allow_legacy_provider:
+            provider_value = options.get("llm_provider")
+        provider = str(provider_value or self.settings.llm_provider).strip().lower()
         if provider == "off":
             return None
-        model = str(options.get("chat_model") or "").strip() or None
+        model_value = options.get(model_key)
+        if model_value is None and allow_legacy_provider:
+            model_value = options.get("chat_model")
+        model = str(model_value or "").strip() or None
         return build_phenotype_llm_selector(self.settings, provider_override=provider, model_override=model)
 
     def extract_hpo_terms(
@@ -129,7 +142,16 @@ class RetrievalService:
             raise ValueError(f"unsupported hpo_mapper: {mapper_mode}")
 
         negation_mode = str(options.get("negation_mode") or "off")
-        llm_selector = self.build_llm_selector(options) if negation_mode == "llm_qc" else None
+        llm_selector = (
+            self.build_llm_selector(
+                options,
+                provider_key="negation_llm_provider",
+                model_key="negation_chat_model",
+                allow_legacy_provider=True,
+            )
+            if negation_mode == "llm_qc"
+            else None
+        )
         return apply_negation_context(
             clinical_note=clinical_note,
             extracted=extracted,

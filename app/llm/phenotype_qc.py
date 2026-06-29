@@ -126,7 +126,7 @@ def build_phenotype_llm_selector(
     provider = (provider_override or settings.llm_provider).strip().lower()
     if provider == "openai":
         if not settings.openai_api_key:
-            raise RuntimeError("LLM QC requires OPENAI_API_KEY when RAREDX_LLM_PROVIDER=openai.")
+            raise RuntimeError("OpenAI LLM requires OPENAI_API_KEY.")
         model = model_override or settings.openai_model
         return PhenotypeLLMSelector(
             OpenAIJSONChatClient(settings.openai_api_key, model),

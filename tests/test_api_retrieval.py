@@ -159,13 +159,32 @@ def test_hpo_mapper_capabilities_endpoint() -> None:
     assert {"dictionary", "doc2hpo", "original_hpo_mapper", "off"}.issubset(ids)
     original = next(item for item in body if item["id"] == "original_hpo_mapper")
     option_keys = {item["key"] for item in original["options"]}
-    assert {"negation_mode", "protocol", "use_llm", "top_k", "threshold"}.issubset(option_keys)
+    assert {
+        "negation_mode",
+        "negation_llm_provider",
+        "negation_chat_model",
+        "protocol",
+        "use_llm",
+        "llm_provider",
+        "chat_model",
+        "top_k",
+        "threshold",
+    }.issubset(option_keys)
     for mapper_id in ("dictionary", "doc2hpo", "original_hpo_mapper"):
         mapper = next(item for item in body if item["id"] == mapper_id)
-        assert "negation_mode" in {item["key"] for item in mapper["options"]}
+        mapper_option_keys = {item["key"] for item in mapper["options"]}
+        assert {"negation_mode", "negation_llm_provider", "negation_chat_model"}.issubset(mapper_option_keys)
+    dictionary = next(item for item in body if item["id"] == "dictionary")
+    dictionary_option_keys = {item["key"] for item in dictionary["options"]}
+    assert "llm_provider" not in dictionary_option_keys
+    assert "chat_model" not in dictionary_option_keys
     chat_model = next(item for item in original["options"] if item["key"] == "chat_model")
     assert chat_model["type"] == "select"
     assert chat_model["default"] == "gpt-4o-mini"
+    negation_llm = next(item for item in original["options"] if item["key"] == "negation_llm_provider")
+    assert negation_llm["label"] == "Negation LLM"
+    extraction_llm = next(item for item in original["options"] if item["key"] == "llm_provider")
+    assert extraction_llm["label"] == "Extraction LLM"
 
 
 def test_llm_model_endpoint_returns_default_without_api_key(monkeypatch) -> None:

@@ -130,7 +130,7 @@ async function runAnalysis() {
         clinical_note: note,
         top_k: Number($("#top-k").value),
         hpo_mapper: state.hpoMapper,
-        hpo_mapper_options: state.mapperOptions[state.hpoMapper] || {},
+        hpo_mapper_options: resolvedMapperOptions(state.hpoMapper),
         ranking_options: state.rankingOptions[rankingMethod] || {},
       });
       runMapperCompare(note);
@@ -191,12 +191,14 @@ async function runMapperCompare(note) {
     .map((mapper) => mapper.id);
   if (!mappers.length) return;
   try {
-    const activeOptions = state.mapperOptions[state.hpoMapper] || {};
+    const activeOptions = resolvedMapperOptions(state.hpoMapper);
     const mapperOptions = { ...state.mapperOptions };
     mappers.forEach((mapperId) => {
       mapperOptions[mapperId] = {
-        ...(mapperOptions[mapperId] || {}),
-        negation_mode: mapperOptions[mapperId]?.negation_mode || activeOptions.negation_mode || "off",
+        ...resolvedMapperOptions(mapperId),
+        negation_mode: resolvedMapperOptions(mapperId).negation_mode || activeOptions.negation_mode || "off",
+        negation_llm_provider: resolvedMapperOptions(mapperId).negation_llm_provider || activeOptions.negation_llm_provider || "off",
+        negation_chat_model: resolvedMapperOptions(mapperId).negation_chat_model || activeOptions.negation_chat_model || "gpt-4o-mini",
       };
     });
     const response = await postJson("/api/hpo-mappers/compare", {
@@ -361,9 +363,14 @@ function renderMapperOptions() {
 function optionField(className, ownerId, option, optionStore) {
   const current = optionStore[ownerId]?.[option.key] ?? option.default;
   const dataAttrs = `data-owner="${escapeHtml(ownerId)}" data-key="${escapeHtml(option.key)}"`;
-  const attrs = `class="${escapeHtml(className)}" ${dataAttrs}`;
-  if (option.key === "chat_model") {
-    const provider = optionStore[ownerId]?.llm_provider || optionDefault(ownerId, "llm_provider") || "off";
+  const disabled = optionDisabled(ownerId, option.key, optionStore);
+  const attrs = `class="${escapeHtml(className)}" ${dataAttrs} ${disabled ? "disabled" : ""}`;
+  if (option.key === "chat_model" || option.key === "negation_chat_model") {
+    const providerKey = option.key === "negation_chat_model" ? "negation_llm_provider" : "llm_provider";
+    const provider = optionStore[ownerId]?.[providerKey] || optionDefault(ownerId, providerKey) || "off";
+    if (disabled) {
+      return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input type="text" value="" disabled></label>`;
+    }
     if (provider === "openai") {
       const choices = state.llmModels.openai?.length ? state.llmModels.openai : ["gpt-4o-mini"];
       const selected = choices.includes(String(current)) ? String(current) : choices[0];
@@ -399,14 +406,14 @@ function optionField(className, ownerId, option, optionStore) {
     `;
   }
   if (option.type === "boolean") {
-    const disabled = option.key === "use_ancestor_terms";
+    const toggleDisabled = option.key === "use_ancestor_terms";
     return `
       <div class="option-boolean">
         <span class="option-label-spacer" aria-hidden="true">&nbsp;</span>
-        <button type="button" class="${escapeHtml(className)} option-toggle ${current ? "active" : ""}" ${dataAttrs} data-value="${current ? "true" : "false"}" ${disabled ? "disabled" : ""}>
+        <button type="button" class="${escapeHtml(className)} option-toggle ${current ? "active" : ""}" ${dataAttrs} data-value="${current ? "true" : "false"}" ${toggleDisabled ? "disabled" : ""}>
           <i data-lucide="${current ? "check" : "plus"}"></i>
           <span>${escapeHtml(option.label)}</span>
-          ${disabled ? '<em>Soon</em>' : ""}
+          ${toggleDisabled ? '<em>Soon</em>' : ""}
         </button>
       </div>
     `;
@@ -416,6 +423,19 @@ function optionField(className, ownerId, option, optionStore) {
   }
   const inputType = option.type === "number" ? "number" : "text";
   return `<label class="${optionLabelClass(option.key)}"><span class="option-label-text">${escapeHtml(option.label)}</span><input ${attrs} type="${inputType}" value="${escapeHtml(current)}"></label>`;
+}
+
+function optionDisabled(ownerId, key, optionStore) {
+  const ownerOptions = optionStore[ownerId] || {};
+  if (["negation_llm_provider", "negation_chat_model"].includes(key)) {
+    const mode = String(ownerOptions.negation_mode ?? optionDefault(ownerId, "negation_mode") ?? "off").toLowerCase();
+    return mode !== "llm_qc";
+  }
+  if (key === "chat_model") {
+    const provider = String(ownerOptions.llm_provider ?? optionDefault(ownerId, "llm_provider") ?? "off").toLowerCase();
+    return provider === "off";
+  }
+  return false;
 }
 
 function embeddingModelDisplayName(backend) {
@@ -466,6 +486,16 @@ function optionChoiceLabel(key, value) {
       status_weight: "Status weight",
       llm_qc: "LLM QC",
     },
+    negation_llm_provider: {
+      off: "Off",
+      openai: "OpenAI",
+      ollama: "Ollama",
+    },
+    llm_provider: {
+      off: "Off",
+      openai: "OpenAI",
+      ollama: "Ollama",
+    },
   };
   return labels[key]?.[value] || value;
 }
@@ -482,11 +512,13 @@ function bindOptionControls(className, optionStore) {
         renderRankingOptions();
         return;
       }
-      if (control.dataset.key === "llm_provider") {
-        if (ownerOptions.llm_provider === "openai" && !ownerOptions.chat_model) {
-          ownerOptions.chat_model = state.llmModels.openai?.[0] || "gpt-4o-mini";
+      if (control.dataset.key === "llm_provider" || control.dataset.key === "negation_llm_provider") {
+        const providerKey = control.dataset.key;
+        const modelKey = providerKey === "negation_llm_provider" ? "negation_chat_model" : "chat_model";
+        if (ownerOptions[providerKey] === "openai" && !ownerOptions[modelKey]) {
+          ownerOptions[modelKey] = state.llmModels.openai?.[0] || "gpt-4o-mini";
         }
-        if (ownerOptions.llm_provider === "openai") loadLlmModels("openai");
+        if (ownerOptions[providerKey] === "openai") loadLlmModels("openai");
         renderMapperOptions();
         return;
       }
@@ -505,6 +537,12 @@ function bindOptionControls(className, optionStore) {
       }
     });
   });
+}
+
+function resolvedMapperOptions(mapperId) {
+  const mapper = state.mapperCapabilities.find((item) => item.id === mapperId);
+  const defaults = Object.fromEntries((mapper?.options || []).map((option) => [option.key, option.default]));
+  return { ...defaults, ...(state.mapperOptions[mapperId] || {}) };
 }
 
 function readOptionValue(control) {
@@ -713,35 +751,54 @@ function showError(message) {
 function hideError() { $("#query-error").hidden = true; }
 
 function renderLlmStatusFromResponse(response) {
-  const options = state.mapperOptions[state.hpoMapper] || {};
-  const provider = String(options.llm_provider || "off").toLowerCase();
-  const requested = Boolean(options.use_llm)
-    || String(options.protocol || "").toLowerCase() === "p3_llm_selection"
-    || String(options.negation_mode || "").toLowerCase() === "llm_qc";
-  if (state.mode !== "note" || !requested || provider === "off") {
+  const options = resolvedMapperOptions(state.hpoMapper);
+  const statuses = llmRequestStatuses(options, response);
+  if (state.mode !== "note" || !statuses.length) {
     hideLlmStatus();
     return;
   }
-  const phenotypes = response.extracted_phenotypes || [];
-  const llmUsed = phenotypes.some((item) => item.metadata?.llm_used);
-  if (llmUsed || phenotypes.length) {
-    showLlmStatus(`${providerLabel(provider)} LLM 호출성공`, "success");
-  } else {
-    showLlmStatus(`${providerLabel(provider)} LLM 호출실패`, "error");
-  }
+  const hasError = statuses.some((status) => status.tone === "error");
+  showLlmStatus(statuses.map((status) => status.message).join(" · "), hasError ? "error" : "success");
 }
 
 function renderLlmStatusFromError(error) {
-  const options = state.mapperOptions[state.hpoMapper] || {};
-  const provider = String(options.llm_provider || "off").toLowerCase();
-  const requested = Boolean(options.use_llm)
-    || String(options.protocol || "").toLowerCase() === "p3_llm_selection"
-    || String(options.negation_mode || "").toLowerCase() === "llm_qc";
-  if (!requested || provider === "off") return;
+  const options = resolvedMapperOptions(state.hpoMapper);
   const message = String(error?.message || "");
   if (/llm|openai|api_key|chat model|model/i.test(message)) {
-    showLlmStatus(`${providerLabel(provider)} LLM 호출실패`, "error");
+    const extraction = extractionLlmRequested(options);
+    const negation = negationLlmRequested(options);
+    const labels = [
+      extraction ? `Extraction ${providerLabel(String(options.llm_provider || "off"))} LLM 호출실패` : "",
+      negation ? `Negation ${providerLabel(String(options.negation_llm_provider || "off"))} LLM 호출실패` : "",
+    ].filter(Boolean);
+    if (labels.length) showLlmStatus(labels.join(" · "), "error");
   }
+}
+
+function llmRequestStatuses(options, response) {
+  const phenotypes = response.extracted_phenotypes || [];
+  const statuses = [];
+  if (extractionLlmRequested(options)) {
+    const provider = String(options.llm_provider || "off").toLowerCase();
+    const used = phenotypes.some((item) => item.metadata?.llm_used && item.metadata?.context_method !== "llm_qc");
+    statuses.push({ message: `Extraction ${providerLabel(provider)} LLM 호출${used ? "성공" : "실패"}`, tone: used ? "success" : "error" });
+  }
+  if (negationLlmRequested(options)) {
+    const provider = String(options.negation_llm_provider || "off").toLowerCase();
+    const used = phenotypes.some((item) => item.metadata?.context_method === "llm_qc");
+    statuses.push({ message: `Negation ${providerLabel(provider)} LLM 호출${used ? "성공" : "실패"}`, tone: used ? "success" : "error" });
+  }
+  return statuses;
+}
+
+function extractionLlmRequested(options) {
+  const provider = String(options.llm_provider || "off").toLowerCase();
+  return provider !== "off" && (Boolean(options.use_llm) || String(options.protocol || "").toLowerCase() === "p3_llm_selection");
+}
+
+function negationLlmRequested(options) {
+  const provider = String(options.negation_llm_provider || "off").toLowerCase();
+  return provider !== "off" && String(options.negation_mode || "").toLowerCase() === "llm_qc";
 }
 
 function showLlmStatus(message, tone) {
