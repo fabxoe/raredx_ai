@@ -19,6 +19,7 @@ jobs:
       WRAPPER_PORT: "9001"
       APP_LOG: /tmp/raredx_app.log
       WRAPPER_LOG: /tmp/raredx_wrapper.log
+      PATH: /Users/admin/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
     steps:
       - name: Resolve deployment directory
