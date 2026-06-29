@@ -1,5 +1,28 @@
 # RARE_DX_AI 개발 히스토리
 
+## 2026-06-30
+
+### GitHub Actions 테스트 및 수동 배포 workflow 도입
+
+팀원이 PR/test/deploy 흐름을 GitHub 안에서 확인할 수 있도록 GitHub Actions workflow를 추가했다.
+
+- `CI` workflow를 추가했다.
+  - `pull_request`와 `main` push에서 실행된다.
+  - `uv sync --locked --extra dev`, `uv run pytest -q`, `docker compose config`를 수행한다.
+  - `.env` tracked 여부와 OpenAI API key 패턴 유입을 검사한다.
+- `Deploy to spare Mac` workflow를 추가했다.
+  - `workflow_dispatch` 수동 실행만 허용한다.
+  - `raredx-macbook` label을 가진 self-hosted runner에서 실행된다.
+  - 남는 맥북의 `~/workbench/raredx_ai`를 최신 `main`으로 갱신하고, 테스트 통과 후 Neo4j와 FastAPI main/wrapper를 재시작한다.
+- 팀원용 운영 문서를 추가했다.
+  - `docs/github_actions_deployment.md`
+
+운영 원칙:
+
+- GitHub Secrets에는 OpenAI API key를 넣지 않는다.
+- 서버용 `.env`와 데이터 파일은 남는 맥북 로컬에만 둔다.
+- PR 테스트는 GitHub-hosted runner에서만 실행하고, public repo PR에는 self-hosted runner를 사용하지 않는다.
+
 ## 2026-06-27
 
 ### Original HPO-Mapper adapter 실제 연동 경계 구현

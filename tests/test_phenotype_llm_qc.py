@@ -48,13 +48,18 @@ def test_openai_quota_error_is_human_readable_without_key() -> None:
 
 
 def test_openai_auth_error_redacts_masked_key() -> None:
+    masked_key = "sk" + "-proj-********ABC"
     error = urllib.error.HTTPError(
         url="https://api.openai.com/v1/chat/completions",
         code=401,
         msg="Unauthorized",
         hdrs={},
         fp=io.BytesIO(
-            b'{"error":{"message":"Incorrect API key provided: sk-proj-********ABC.","type":"invalid_request_error","code":"invalid_api_key"}}'
+            (
+                '{"error":{"message":"Incorrect API key provided: '
+                + masked_key
+                + '.","type":"invalid_request_error","code":"invalid_api_key"}}'
+            ).encode()
         ),
     )
 

@@ -39,6 +39,12 @@ notebooks/  # 향후 EDA/실험 notebook
 reports/    # 향후 보고서/그림
 ```
 
+GitHub Actions 운영 문서:
+
+```text
+docs/github_actions_deployment.md
+```
+
 ## 요구사항
 
 - Python 3.12
@@ -209,6 +215,8 @@ https://api.cromtind.uk/
 ```
 
 프론트엔드는 HPO/clinical note 입력, IC·embedding·hybrid ranking, candidate evidence, Disease-Gene-Phenotype graph를 제공한다. Neo4j Bolt와 계정 정보는 FastAPI 내부에서만 사용하며 고객에게 노출하지 않는다.
+
+팀 배포는 GitHub Actions의 `Deploy to spare Mac` workflow에서 수동 실행한다. 자세한 절차는 `docs/github_actions_deployment.md`를 참고한다.
 
 Neo4j Browser:
 

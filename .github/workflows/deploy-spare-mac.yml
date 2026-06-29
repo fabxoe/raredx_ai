@@ -1,0 +1,133 @@
+name: Deploy to spare Mac
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Manual deploy
+    runs-on:
+      - self-hosted
+      - raredx-macbook
+
+    env:
+      DEPLOY_DIR: ${{ github.workspace }}/../raredx_ai
+      APP_PORT: "8010"
+      WRAPPER_PORT: "9001"
+      APP_LOG: /tmp/raredx_app.log
+      WRAPPER_LOG: /tmp/raredx_wrapper.log
+
+    steps:
+      - name: Resolve deployment directory
+        run: |
+          set -euo pipefail
+          if [ -d "$HOME/workbench/raredx_ai/.git" ]; then
+            echo "DEPLOY_DIR=$HOME/workbench/raredx_ai" >> "$GITHUB_ENV"
+          elif [ -d "$DEPLOY_DIR/.git" ]; then
+            echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
+          else
+            echo "::error::Cannot find deployment repo. Expected $HOME/workbench/raredx_ai"
+            exit 1
+          fi
+
+      - name: Resolve uv command
+        run: |
+          set -euo pipefail
+          if command -v uv >/dev/null 2>&1; then
+            echo "UV_BIN=$(command -v uv)" >> "$GITHUB_ENV"
+          elif [ -x "$HOME/.local/bin/uv" ]; then
+            echo "UV_BIN=$HOME/.local/bin/uv" >> "$GITHUB_ENV"
+          else
+            echo "::error::uv is not installed for this runner user"
+            exit 1
+          fi
+
+      - name: Preflight local dependencies
+        run: |
+          set -euo pipefail
+          command -v git >/dev/null
+          command -v curl >/dev/null
+          command -v docker >/dev/null
+          docker info >/dev/null
+          test -f "$DEPLOY_DIR/.env"
+          test -d "$DEPLOY_DIR/data/processed"
+          test -d "$DEPLOY_DIR/data/external/original_hpo_mapper"
+
+      - name: Pull latest main
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          "$UV_BIN" sync --locked --python 3.12 --extra dev
+
+      - name: Run deployment tests
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          "$UV_BIN" run pytest -q
+
+      - name: Start Neo4j
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          docker compose up -d neo4j
+          for attempt in {1..30}; do
+            if docker compose exec -T neo4j cypher-shell -u neo4j -p raredx_password 'RETURN 1' >/dev/null 2>&1; then
+              echo "Neo4j is healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::Neo4j did not become healthy"
+          docker compose ps
+          exit 1
+
+      - name: Restart FastAPI services
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          pkill -f 'uvicorn app.main:app' || true
+          pkill -f 'uvicorn app.original_hpo_mapper_wrapper:app' || true
+          sleep 2
+
+          nohup "$UV_BIN" run uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" > "$APP_LOG" 2>&1 &
+          echo $! > /tmp/raredx_app.pid
+
+          nohup "$UV_BIN" run uvicorn app.original_hpo_mapper_wrapper:app --host 127.0.0.1 --port "$WRAPPER_PORT" > "$WRAPPER_LOG" 2>&1 &
+          echo $! > /tmp/raredx_wrapper.pid
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+
+          check_url() {
+            local url="$1"
+            local name="$2"
+            for attempt in {1..30}; do
+              if curl -fsS "$url" >/dev/null; then
+                echo "$name OK"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::$name failed: $url"
+            echo "--- app log ---"
+            tail -n 120 "$APP_LOG" || true
+            echo "--- wrapper log ---"
+            tail -n 120 "$WRAPPER_LOG" || true
+            return 1
+          }
+
+          check_url "http://127.0.0.1:$APP_PORT/" "main app"
+          check_url "http://127.0.0.1:$APP_PORT/api/hpo-mappers" "mapper registry"
+          check_url "http://127.0.0.1:$WRAPPER_PORT/health" "original mapper wrapper"
