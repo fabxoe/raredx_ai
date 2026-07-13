@@ -949,8 +949,9 @@ function toggleCypherLock() {
 
 function openCypherUnlockModal() {
   const modal = $("#cypher-unlock-modal");
+  modal.classList.remove("is-hidden");
   modal.hidden = false;
-  modal.style.display = "grid";
+  modal.style.setProperty("display", "grid", "important");
   modal.setAttribute("aria-hidden", "false");
   $("#cypher-unlock-confirm").value = "";
   updateCypherUnlockReadiness();
@@ -959,8 +960,9 @@ function openCypherUnlockModal() {
 
 function closeCypherUnlockModal() {
   const modal = $("#cypher-unlock-modal");
+  modal.classList.add("is-hidden");
   modal.hidden = true;
-  modal.style.display = "none";
+  modal.style.setProperty("display", "none", "important");
   modal.setAttribute("aria-hidden", "true");
   $("#cypher-unlock-confirm").value = "";
   updateCypherUnlockReadiness();
@@ -985,8 +987,9 @@ function confirmCypherUnlock() {
     $("#cypher-unlock-confirm").focus();
     return;
   }
-  setCypherMode("write");
+  hideCypherError();
   closeCypherUnlockModal();
+  setCypherMode("write");
 }
 
 function setCypherMode(mode) {

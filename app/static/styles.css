@@ -928,6 +928,11 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   display: none !important;
 }
 
+.modal-backdrop.is-hidden {
+  display: none !important;
+  pointer-events: none;
+}
+
 .modal-panel {
   width: min(100%, 420px);
   padding: 20px;
