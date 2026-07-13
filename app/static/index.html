@@ -218,6 +218,7 @@
           <i data-lucide="lock"></i>
           <span>Read-only locked</span>
         </button>
+        <p id="cypher-safety-status" class="safety-status is-locked">Read-only mode: 쓰기/삭제 Cypher는 차단됩니다.</p>
         <p class="helper-copy">기본값은 조회 전용입니다. 쓰기/삭제 쿼리는 자물쇠를 풀어야 실행됩니다.</p>
       </section>
 
@@ -307,7 +308,7 @@ LIMIT 50</textarea>
       <input id="cypher-unlock-confirm" autocomplete="off" placeholder="UNLOCK">
       <div class="modal-actions">
         <button id="cypher-unlock-cancel" class="secondary-button" type="button">Cancel</button>
-        <button id="cypher-unlock-apply" class="danger-button" type="button">Unlock</button>
+        <button id="cypher-unlock-apply" class="danger-button" type="button" disabled>Unlock</button>
       </div>
     </div>
   </div>

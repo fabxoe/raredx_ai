@@ -85,6 +85,7 @@ function bindControls() {
   $("#cypher-lock-toggle").addEventListener("click", toggleCypherLock);
   $("#cypher-unlock-cancel").addEventListener("click", closeCypherUnlockModal);
   $("#cypher-unlock-apply").addEventListener("click", confirmCypherUnlock);
+  $("#cypher-unlock-confirm").addEventListener("input", updateCypherUnlockReadiness);
   $("#cypher-unlock-confirm").addEventListener("keydown", (event) => {
     if (event.key === "Enter") confirmCypherUnlock();
     if (event.key === "Escape") closeCypherUnlockModal();
@@ -938,12 +939,23 @@ function openCypherUnlockModal() {
   const modal = $("#cypher-unlock-modal");
   modal.hidden = false;
   $("#cypher-unlock-confirm").value = "";
+  updateCypherUnlockReadiness();
   setTimeout(() => $("#cypher-unlock-confirm").focus(), 0);
 }
 
 function closeCypherUnlockModal() {
   $("#cypher-unlock-modal").hidden = true;
   $("#cypher-unlock-confirm").value = "";
+  updateCypherUnlockReadiness();
+}
+
+function updateCypherUnlockReadiness() {
+  const input = $("#cypher-unlock-confirm");
+  const apply = $("#cypher-unlock-apply");
+  if (!input || !apply) return;
+  const isReady = input.value.trim() === "UNLOCK";
+  apply.disabled = !isReady;
+  input.classList.toggle("is-valid", isReady);
 }
 
 function confirmCypherUnlock() {
@@ -961,11 +973,20 @@ function setCypherMode(mode) {
   const button = $("#cypher-lock-toggle");
   const icon = button.querySelector("i");
   const text = button.querySelector("span");
+  const status = $("#cypher-safety-status");
+  const isWrite = state.cypherMode === "write";
   $("#cypher-mode-label").textContent = state.cypherMode === "write" ? "Write unlocked" : "Read-only";
-  button.classList.toggle("is-unlocked", state.cypherMode === "write");
-  button.classList.toggle("is-locked", state.cypherMode !== "write");
-  icon.setAttribute("data-lucide", state.cypherMode === "write" ? "unlock" : "lock");
-  text.textContent = state.cypherMode === "write" ? "Write unlocked" : "Read-only lock";
+  button.classList.toggle("is-unlocked", isWrite);
+  button.classList.toggle("is-locked", !isWrite);
+  icon.setAttribute("data-lucide", isWrite ? "unlock" : "lock");
+  text.textContent = isWrite ? "Write mode unlocked" : "Read-only locked";
+  if (status) {
+    status.textContent = isWrite
+      ? "Write mode: 쓰기/삭제 Cypher 실행이 허용됩니다. 다시 누르면 잠깁니다."
+      : "Read-only mode: 쓰기/삭제 Cypher는 차단됩니다.";
+    status.classList.toggle("is-unlocked", isWrite);
+    status.classList.toggle("is-locked", !isWrite);
+  }
   if (window.lucide) window.lucide.createIcons();
 }
 

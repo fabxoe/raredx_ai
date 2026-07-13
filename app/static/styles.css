@@ -751,6 +751,22 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   color: #8f2929;
 }
 
+.safety-status {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.safety-status.is-unlocked {
+  border-left-color: var(--red);
+  background: #fff1f1;
+  color: #8f2929;
+}
+
 .preset-list {
   display: grid;
   gap: 6px;
@@ -931,6 +947,11 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   padding: 0 10px;
 }
 
+.modal-panel input.is-valid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px rgba(197, 60, 60, 0.18);
+}
+
 .modal-actions {
   margin-top: 16px;
   display: flex;
@@ -956,6 +977,12 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   border: 0;
   background: var(--red);
   color: #fff;
+}
+
+.danger-button:disabled {
+  background: #e7caca;
+  color: #fff8f8;
+  cursor: not-allowed;
 }
 
 @media (max-width: 1050px) {
