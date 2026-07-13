@@ -7,10 +7,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png?v=mark-v1">
   <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=mark-v1">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png?v=mark-v1">
-  <link rel="stylesheet" href="/static/styles.css?v=negation-v1">
+  <link rel="stylesheet" href="/static/styles.css?v=cypher-lab-v1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js" defer></script>
-  <script src="/static/app.js?v=negation-v1" defer></script>
+  <script src="/static/app.js?v=cypher-lab-v1" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -21,6 +21,10 @@
         <p>Rare disease candidate prioritization</p>
       </div>
     </div>
+    <nav class="workspace-switch" id="workspace-switch" aria-label="작업공간">
+      <button class="active" data-workspace="ranking">Graph Explorer</button>
+      <button data-workspace="cypher">Cypher Lab</button>
+    </nav>
     <div class="header-actions">
       <span class="status-badge"><span class="status-dot"></span>Research prototype</span>
       <a
@@ -36,7 +40,7 @@
     </div>
   </header>
 
-  <main class="workspace">
+  <main class="workspace" id="ranking-workspace">
     <aside class="query-panel">
       <div class="panel-heading">
         <div>
@@ -195,5 +199,117 @@
       </div>
     </section>
   </main>
+
+  <main class="cypher-workspace" id="cypher-workspace" hidden>
+    <aside class="cypher-side">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">Admin workspace</span>
+          <h2>Cypher Lab</h2>
+        </div>
+        <button id="cypher-schema-refresh" class="icon-button" title="Preset 새로고침" aria-label="Preset 새로고침">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
+
+      <section class="cypher-block">
+        <label>Safety</label>
+        <button id="cypher-lock-toggle" class="lock-toggle is-locked" type="button">
+          <i data-lucide="lock"></i>
+          <span>Read-only locked</span>
+        </button>
+        <p class="helper-copy">기본값은 조회 전용입니다. 쓰기/삭제 쿼리는 자물쇠를 풀어야 실행됩니다.</p>
+      </section>
+
+      <section class="cypher-block">
+        <label>Preset queries</label>
+        <div id="cypher-presets" class="preset-list">
+          <button class="preset-item" disabled>Loading presets</button>
+        </div>
+      </section>
+
+      <section class="cypher-block">
+        <div class="option-grid">
+          <label>
+            <span class="option-label-text">Rows</span>
+            <input id="cypher-result-limit" type="number" min="1" max="5000" value="500">
+          </label>
+          <label>
+            <span class="option-label-text">Graph limit</span>
+            <input id="cypher-graph-limit" type="number" min="1" max="1000" value="250">
+          </label>
+        </div>
+      </section>
+
+      <button id="cypher-run" class="primary-button">
+        <i data-lucide="play"></i>
+        <span>Run Cypher</span>
+      </button>
+      <div id="cypher-error" class="error-message" hidden></div>
+      <div id="cypher-warning" class="mapper-warning" hidden></div>
+    </aside>
+
+    <section class="cypher-main">
+      <div class="cypher-toolbar">
+        <div>
+          <span class="eyebrow">Neo4j query console</span>
+          <h2>Cypher execution</h2>
+        </div>
+        <div class="run-meta">
+          <span id="cypher-mode-label">read mode</span>
+          <span class="divider"></span>
+          <span id="cypher-stats">Ready</span>
+        </div>
+      </div>
+
+      <div class="cypher-grid">
+        <section class="cypher-editor-panel">
+          <label for="cypher-query">Cypher</label>
+          <textarea id="cypher-query" spellcheck="false">MATCH path = (d:Disease)-[:HAS_PHENOTYPE]->(p:Phenotype)
+RETURN path
+LIMIT 50</textarea>
+          <label for="cypher-params">Params JSON</label>
+          <textarea id="cypher-params" spellcheck="false">{
+  "term": "epilepsy"
+}</textarea>
+        </section>
+
+        <section class="cypher-results-panel">
+          <div class="section-title">
+            <h3>Results</h3>
+            <div class="segmented-control result-tabs" id="cypher-result-tabs" role="tablist" aria-label="Cypher 결과 보기">
+              <button class="active" data-result-view="table">Table</button>
+              <button data-result-view="graph">Graph</button>
+              <button data-result-view="json">JSON</button>
+            </div>
+          </div>
+          <div id="cypher-table-panel" class="cypher-result-view table-wrap">
+            <table class="cypher-table">
+              <thead id="cypher-table-head"></thead>
+              <tbody id="cypher-table-body">
+                <tr class="empty-row"><td>No results</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="cypher-graph-panel" class="cypher-result-view cypher-graph-panel" hidden>
+            <div id="cypher-graph" role="img" aria-label="Cypher 결과 그래프"></div>
+          </div>
+          <pre id="cypher-json-panel" class="cypher-result-view cypher-json" hidden>{}</pre>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="cypher-unlock-modal" hidden>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="cypher-unlock-title">
+      <h2 id="cypher-unlock-title">Write mode unlock</h2>
+      <p>쓰기/삭제 Cypher는 그래프 데이터를 변경할 수 있습니다. 계속하려면 <strong>UNLOCK</strong>을 입력하세요.</p>
+      <input id="cypher-unlock-confirm" autocomplete="off" placeholder="UNLOCK">
+      <div class="modal-actions">
+        <button id="cypher-unlock-cancel" class="secondary-button" type="button">Cancel</button>
+        <button id="cypher-unlock-apply" class="danger-button" type="button">Unlock</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

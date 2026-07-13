@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from app.api.admin_cypher import router as admin_cypher_router
 from app.api.graph import router as graph_router
 from app.api.hpo_mappers import router as hpo_mappers_router
 from app.api.retrieval import router as retrieval_router
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Explainable rare disease candidate prioritization research API.",
     )
+    app.include_router(admin_cypher_router, prefix="/api/admin", tags=["admin"])
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["retrieval"])
     app.include_router(graph_router, prefix="/api/graph", tags=["graph"])
     app.include_router(hpo_mappers_router, prefix="/api/hpo-mappers", tags=["hpo-mappers"])

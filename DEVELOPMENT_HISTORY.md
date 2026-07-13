@@ -1,5 +1,48 @@
 # RARE_DX_AI 개발 히스토리
 
+## 2026-07-13
+
+### Cypher Lab 관리자 작업공간 추가
+
+팀원 전용 Cloudflare Access 환경에서 Neo4j Browser를 직접 열지 않고도 RARE_DX_AI 화면 안에서 Cypher를 실행하고 결과를 확인할 수 있도록 `Cypher Lab` 작업공간을 추가했다.
+
+- 상단 작업공간 전환을 추가했다.
+  - `Graph Explorer`
+  - `Cypher Lab`
+- Cypher Lab API를 추가했다.
+  - `GET /api/admin/cypher/presets`
+  - `POST /api/admin/cypher/run`
+- 기본 모드는 read-only다.
+  - `CREATE`, `MERGE`, `SET`, `DELETE`, `DROP`, `LOAD CSV`, 일부 admin/procedure 호출은 read-only mode에서 차단한다.
+  - 쓰기 mode는 자물쇠 버튼을 누르고 `UNLOCK`을 입력해야 열린다.
+- 결과 보기를 세 가지로 제공한다.
+  - table
+  - graph
+  - json
+- Neo4j node, relationship, path 반환값을 프론트에서 볼 수 있는 JSON과 Cytoscape graph로 변환한다.
+- 자주 쓰는 Cypher preset을 제공한다.
+  - label 목록
+  - relationship type 목록
+  - node count
+  - disease-phenotype sample
+  - disease-gene-phenotype sample
+  - disease name search
+
+현재 한계:
+
+- 자물쇠는 UI 안전장치이며, 실제 접근 통제는 Cloudflare Access와 GitHub/서버 운영 권한에 의존한다.
+- write mode 자체는 필요 시 사용할 수 있지만, 팀원 실험 단계에서는 read-only preset 중심으로 사용하는 것을 권장한다.
+- 장기적으로는 관리자 권한 header, audit log, query allowlist를 추가하는 것이 좋다.
+
+검증:
+
+- `uv run python -m compileall app`
+  - 결과: 통과
+- `uv run pytest tests/test_cypher_lab.py -q`
+  - 결과: `10 passed`
+- `uv run pytest -q`
+  - 결과: `51 passed`
+
 ## 2026-06-30
 
 ### GitHub Actions 테스트 및 수동 배포 workflow 도입

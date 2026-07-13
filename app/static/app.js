@@ -18,6 +18,12 @@ const state = {
   ]),
   candidates: [],
   graph: null,
+  workspace: "ranking",
+  cypherMode: "read",
+  cypherGraph: null,
+  cypherPresets: [],
+  cypherResultView: "table",
+  cypherLastResponse: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -31,10 +37,16 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRankingCapabilities();
   renderTerms();
   initializeGraph();
+  initializeCypherGraph();
+  loadCypherPresets();
   runAnalysis();
 });
 
 function bindControls() {
+  $$("#workspace-switch button").forEach((button) => button.addEventListener("click", () => {
+    setWorkspace(button.dataset.workspace);
+  }));
+
   $$("#input-mode button").forEach((button) => button.addEventListener("click", () => {
     $$("#input-mode button").forEach((item) => item.classList.toggle("active", item === button));
     state.mode = button.dataset.mode;
@@ -68,6 +80,30 @@ function bindControls() {
   });
   $("#fit-graph").addEventListener("click", () => state.graph?.fit(undefined, 36));
   $("#reset-graph").addEventListener("click", runGraphLayout);
+  $("#cypher-schema-refresh").addEventListener("click", loadCypherPresets);
+  $("#cypher-run").addEventListener("click", runCypher);
+  $("#cypher-lock-toggle").addEventListener("click", toggleCypherLock);
+  $("#cypher-unlock-cancel").addEventListener("click", closeCypherUnlockModal);
+  $("#cypher-unlock-apply").addEventListener("click", confirmCypherUnlock);
+  $("#cypher-unlock-confirm").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") confirmCypherUnlock();
+    if (event.key === "Escape") closeCypherUnlockModal();
+  });
+  $$("#cypher-result-tabs button").forEach((button) => button.addEventListener("click", () => {
+    setCypherResultView(button.dataset.resultView);
+  }));
+}
+
+function setWorkspace(workspace) {
+  state.workspace = workspace === "cypher" ? "cypher" : "ranking";
+  $$("#workspace-switch button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.workspace === state.workspace);
+  });
+  $("#ranking-workspace").hidden = state.workspace !== "ranking";
+  $("#cypher-workspace").hidden = state.workspace !== "cypher";
+  if (state.workspace === "cypher") {
+    setTimeout(() => state.cypherGraph?.resize().fit(undefined, 40), 0);
+  }
 }
 
 async function searchPhenotypes(event) {
@@ -664,6 +700,276 @@ function renderGraph(payload) {
   state.graph.add(elements);
   runGraphLayout();
   $("#graph-count").textContent = `${payload.nodes.length} nodes · ${payload.edges.length} edges`;
+}
+
+async function loadCypherPresets() {
+  const container = $("#cypher-presets");
+  if (!container) return;
+  container.innerHTML = '<button class="preset-item" disabled>Loading presets...</button>';
+  try {
+    const response = await fetch("/api/admin/cypher/presets");
+    if (!response.ok) throw new Error("Cypher preset 목록을 불러오지 못했습니다.");
+    state.cypherPresets = await response.json();
+    renderCypherPresets();
+  } catch (error) {
+    container.innerHTML = `<button class="preset-item" disabled>${escapeHtml(error.message)}</button>`;
+  }
+}
+
+function renderCypherPresets() {
+  const container = $("#cypher-presets");
+  if (!container) return;
+  container.innerHTML = state.cypherPresets.map((preset) => `
+    <button type="button" class="preset-item" data-preset="${escapeHtml(preset.id)}">
+      <strong>${escapeHtml(preset.label)}</strong>
+      <span>${escapeHtml(preset.description)}</span>
+    </button>
+  `).join("");
+  $$(".preset-item[data-preset]").forEach((button) => button.addEventListener("click", () => {
+    const preset = state.cypherPresets.find((item) => item.id === button.dataset.preset);
+    if (!preset) return;
+    $("#cypher-query").value = preset.query;
+    $("#cypher-params").value = JSON.stringify(preset.params || {}, null, 2);
+    hideCypherError();
+  }));
+}
+
+async function runCypher() {
+  const button = $("#cypher-run");
+  const label = button?.querySelector("span");
+  if (!button || !label) return;
+  button.disabled = true;
+  label.textContent = "Running";
+  hideCypherError();
+  renderCypherWarnings([]);
+  try {
+    const payload = {
+      query: $("#cypher-query").value,
+      params: parseCypherParams(),
+      mode: state.cypherMode,
+      result_limit: Number($("#cypher-result-limit").value || 500),
+      graph_limit: Number($("#cypher-graph-limit").value || 250),
+    };
+    const response = await postJson("/api/admin/cypher/run", payload);
+    state.cypherLastResponse = response;
+    renderCypherResponse(response);
+  } catch (error) {
+    showCypherError(error.message);
+  } finally {
+    button.disabled = false;
+    label.textContent = "Run Cypher";
+  }
+}
+
+function parseCypherParams() {
+  const raw = $("#cypher-params").value.trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("params must be an object");
+    }
+    return parsed;
+  } catch (error) {
+    throw new Error("Params는 JSON object 형식이어야 합니다.");
+  }
+}
+
+function renderCypherResponse(response) {
+  renderCypherStats(response.stats);
+  renderCypherWarnings(response.warnings || []);
+  renderCypherTable(response.columns || [], response.rows || []);
+  renderCypherGraph(response.graph || { nodes: [], edges: [] });
+  $("#cypher-json-panel").textContent = JSON.stringify(response, null, 2);
+  setCypherResultView(state.cypherResultView);
+}
+
+function renderCypherStats(stats) {
+  $("#cypher-stats").textContent = `${stats?.row_count || 0} rows · ${stats?.node_count || 0} nodes · ${stats?.edge_count || 0} edges · ${stats?.elapsed_ms || 0} ms`;
+}
+
+function renderCypherWarnings(warnings) {
+  const box = $("#cypher-warning");
+  if (!box) return;
+  if (!warnings?.length) {
+    box.hidden = true;
+    box.textContent = "";
+    return;
+  }
+  box.textContent = warnings.join(" ");
+  box.hidden = false;
+}
+
+function renderCypherTable(columns, rows) {
+  const head = $("#cypher-table-head");
+  const body = $("#cypher-table-body");
+  const resolvedColumns = columns.length ? columns : Object.keys(rows[0] || {});
+  if (!resolvedColumns.length) {
+    head.innerHTML = "";
+    body.innerHTML = '<tr class="empty-row"><td>결과 row가 없습니다.</td></tr>';
+    return;
+  }
+  head.innerHTML = `<tr>${resolvedColumns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
+  body.innerHTML = rows.map((row) => `
+    <tr>${resolvedColumns.map((column) => `<td>${formatCypherCell(row[column])}</td>`).join("")}</tr>
+  `).join("") || `<tr class="empty-row"><td colspan="${resolvedColumns.length}">결과 row가 없습니다.</td></tr>`;
+}
+
+function formatCypherCell(value) {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return escapeHtml(value);
+  }
+  return `<code class="cypher-cell-code">${escapeHtml(JSON.stringify(value, null, 2))}</code>`;
+}
+
+function initializeCypherGraph() {
+  const container = $("#cypher-graph");
+  if (!container || !window.cytoscape) return;
+  state.cypherGraph = cytoscape({
+    container,
+    elements: [],
+    minZoom: 0.2,
+    maxZoom: 2.5,
+    wheelSensitivity: 0.18,
+    style: cypherGraphStyles(),
+  });
+  state.cypherGraph.on("tap", "node", (event) => {
+    const data = event.target.data();
+    $("#cypher-json-panel").textContent = JSON.stringify(data, null, 2);
+    setCypherResultView("json");
+  });
+}
+
+function renderCypherGraph(graph) {
+  if (!state.cypherGraph) return;
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  state.cypherGraph.elements().remove();
+  state.cypherGraph.add([
+    ...nodes.map((node) => ({ data: node })),
+    ...edges.map((edge) => ({ data: edge })),
+  ]);
+  runCypherGraphLayout();
+}
+
+function runCypherGraphLayout() {
+  if (!state.cypherGraph || state.cypherGraph.elements().length === 0) return;
+  state.cypherGraph.layout({
+    name: "cose",
+    animate: true,
+    animationDuration: 360,
+    fit: true,
+    padding: 34,
+    nodeRepulsion: 7500,
+    idealEdgeLength: 92,
+    gravity: 0.28,
+  }).run();
+}
+
+function cypherGraphStyles() {
+  const color = { Patient: "#17201c", Phenotype: "#16784a", Disease: "#2766b0", Gene: "#a95e13" };
+  const size = { Patient: 38, Phenotype: 28, Disease: 34, Gene: 24 };
+  return [
+    { selector: "node", style: {
+      "background-color": (node) => color[node.data("type")] || "#64736b",
+      width: (node) => size[node.data("type")] || 28,
+      height: (node) => size[node.data("type")] || 28,
+      label: "data(label)",
+      color: "#26312b",
+      "font-size": 9,
+      "font-weight": 650,
+      "text-wrap": "wrap",
+      "text-max-width": 110,
+      "text-valign": "bottom",
+      "text-margin-y": 7,
+      "border-width": 2,
+      "border-color": "#ffffff",
+      "overlay-opacity": 0,
+    }},
+    { selector: "edge", style: {
+      width: 1.1,
+      label: "data(type)",
+      "font-size": 7,
+      "text-rotation": "autorotate",
+      "text-margin-y": -8,
+      "line-color": "#c3cbc6",
+      "target-arrow-color": "#aab5af",
+      "target-arrow-shape": "triangle",
+      "arrow-scale": 0.65,
+      "curve-style": "bezier",
+      opacity: 0.74,
+    }},
+  ];
+}
+
+function setCypherResultView(view) {
+  state.cypherResultView = ["table", "graph", "json"].includes(view) ? view : "table";
+  $$("#cypher-result-tabs button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.resultView === state.cypherResultView);
+  });
+  $("#cypher-table-panel").hidden = state.cypherResultView !== "table";
+  $("#cypher-graph-panel").hidden = state.cypherResultView !== "graph";
+  $("#cypher-json-panel").hidden = state.cypherResultView !== "json";
+  if (state.cypherResultView === "graph") {
+    setTimeout(() => state.cypherGraph?.resize().fit(undefined, 36), 0);
+  }
+}
+
+function toggleCypherLock() {
+  if (state.cypherMode === "write") {
+    setCypherMode("read");
+    return;
+  }
+  openCypherUnlockModal();
+}
+
+function openCypherUnlockModal() {
+  const modal = $("#cypher-unlock-modal");
+  modal.hidden = false;
+  $("#cypher-unlock-confirm").value = "";
+  setTimeout(() => $("#cypher-unlock-confirm").focus(), 0);
+}
+
+function closeCypherUnlockModal() {
+  $("#cypher-unlock-modal").hidden = true;
+  $("#cypher-unlock-confirm").value = "";
+}
+
+function confirmCypherUnlock() {
+  if ($("#cypher-unlock-confirm").value.trim() !== "UNLOCK") {
+    showCypherError('Write mode를 열려면 확인창에 "UNLOCK"을 입력해야 합니다.');
+    $("#cypher-unlock-confirm").focus();
+    return;
+  }
+  setCypherMode("write");
+  closeCypherUnlockModal();
+}
+
+function setCypherMode(mode) {
+  state.cypherMode = mode === "write" ? "write" : "read";
+  const button = $("#cypher-lock-toggle");
+  const icon = button.querySelector("i");
+  const text = button.querySelector("span");
+  $("#cypher-mode-label").textContent = state.cypherMode === "write" ? "Write unlocked" : "Read-only";
+  button.classList.toggle("is-unlocked", state.cypherMode === "write");
+  button.classList.toggle("is-locked", state.cypherMode !== "write");
+  icon.setAttribute("data-lucide", state.cypherMode === "write" ? "unlock" : "lock");
+  text.textContent = state.cypherMode === "write" ? "Write unlocked" : "Read-only lock";
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function showCypherError(message) {
+  const box = $("#cypher-error");
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function hideCypherError() {
+  const box = $("#cypher-error");
+  if (!box) return;
+  box.hidden = true;
+  box.textContent = "";
 }
 
 function clearGraph(label = "0 nodes · 0 edges") {
