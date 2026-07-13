@@ -851,6 +851,12 @@ function renderCypherGraph(graph) {
     ...edges.map((edge) => ({ data: edge })),
   ]);
   runCypherGraphLayout();
+  if (state.cypherResultView === "graph") {
+    setTimeout(() => {
+      state.cypherGraph?.resize();
+      runCypherGraphLayout();
+    }, 0);
+  }
 }
 
 function runCypherGraphLayout() {
@@ -912,7 +918,11 @@ function setCypherResultView(view) {
   $("#cypher-graph-panel").hidden = state.cypherResultView !== "graph";
   $("#cypher-json-panel").hidden = state.cypherResultView !== "json";
   if (state.cypherResultView === "graph") {
-    setTimeout(() => state.cypherGraph?.resize().fit(undefined, 36), 0);
+    setTimeout(() => {
+      state.cypherGraph?.resize();
+      runCypherGraphLayout();
+      state.cypherGraph?.fit(undefined, 36);
+    }, 30);
   }
 }
 

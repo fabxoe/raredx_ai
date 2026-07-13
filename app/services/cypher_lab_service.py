@@ -96,8 +96,9 @@ class CypherLabService:
                     break
                 row = {key: self._json_value(record[key]) for key in record.keys()}
                 rows.append(row)
-                if self._collect_graph(record.data(), graph, request.graph_limit):
-                    truncated_graph = True
+                for value in record.values():
+                    if self._collect_graph(value, graph, request.graph_limit):
+                        truncated_graph = True
             await result.consume()
 
         return columns, rows, graph, truncated_rows, truncated_graph
