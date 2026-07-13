@@ -83,12 +83,24 @@ function bindControls() {
   $("#cypher-schema-refresh").addEventListener("click", loadCypherPresets);
   $("#cypher-run").addEventListener("click", runCypher);
   $("#cypher-lock-toggle").addEventListener("click", toggleCypherLock);
-  $("#cypher-unlock-cancel").addEventListener("click", closeCypherUnlockModal);
-  $("#cypher-unlock-apply").addEventListener("click", confirmCypherUnlock);
+  $("#cypher-unlock-cancel").addEventListener("click", (event) => {
+    event.preventDefault();
+    closeCypherUnlockModal();
+  });
+  $("#cypher-unlock-apply").addEventListener("click", (event) => {
+    event.preventDefault();
+    confirmCypherUnlock();
+  });
   $("#cypher-unlock-confirm").addEventListener("input", updateCypherUnlockReadiness);
   $("#cypher-unlock-confirm").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") confirmCypherUnlock();
-    if (event.key === "Escape") closeCypherUnlockModal();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      confirmCypherUnlock();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCypherUnlockModal();
+    }
   });
   $$("#cypher-result-tabs button").forEach((button) => button.addEventListener("click", () => {
     setCypherResultView(button.dataset.resultView);
@@ -938,13 +950,18 @@ function toggleCypherLock() {
 function openCypherUnlockModal() {
   const modal = $("#cypher-unlock-modal");
   modal.hidden = false;
+  modal.style.display = "grid";
+  modal.setAttribute("aria-hidden", "false");
   $("#cypher-unlock-confirm").value = "";
   updateCypherUnlockReadiness();
   setTimeout(() => $("#cypher-unlock-confirm").focus(), 0);
 }
 
 function closeCypherUnlockModal() {
-  $("#cypher-unlock-modal").hidden = true;
+  const modal = $("#cypher-unlock-modal");
+  modal.hidden = true;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
   $("#cypher-unlock-confirm").value = "";
   updateCypherUnlockReadiness();
 }
@@ -954,7 +971,11 @@ function updateCypherUnlockReadiness() {
   const apply = $("#cypher-unlock-apply");
   if (!input || !apply) return;
   const isReady = input.value.trim() === "UNLOCK";
-  apply.disabled = !isReady;
+  if (isReady) {
+    apply.removeAttribute("disabled");
+  } else {
+    apply.setAttribute("disabled", "disabled");
+  }
   input.classList.toggle("is-valid", isReady);
 }
 
