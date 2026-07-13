@@ -924,6 +924,10 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weig
   background: rgba(23, 32, 28, 0.36);
 }
 
+.modal-backdrop[hidden] {
+  display: none !important;
+}
+
 .modal-panel {
   width: min(100%, 420px);
   padding: 20px;
