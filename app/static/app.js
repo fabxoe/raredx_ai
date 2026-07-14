@@ -995,14 +995,14 @@ function confirmCypherUnlock() {
 function setCypherMode(mode) {
   state.cypherMode = mode === "write" ? "write" : "read";
   const button = $("#cypher-lock-toggle");
-  const icon = button.querySelector("i");
   const text = button.querySelector("span");
   const status = $("#cypher-safety-status");
   const isWrite = state.cypherMode === "write";
   $("#cypher-mode-label").textContent = state.cypherMode === "write" ? "Write unlocked" : "Read-only";
   button.classList.toggle("is-unlocked", isWrite);
   button.classList.toggle("is-locked", !isWrite);
-  icon.setAttribute("data-lucide", isWrite ? "unlock" : "lock");
+  button.querySelector("svg, i")?.remove();
+  button.insertAdjacentHTML("afterbegin", `<i data-lucide="${isWrite ? "unlock" : "lock"}"></i>`);
   text.textContent = isWrite ? "Write mode unlocked" : "Read-only locked";
   if (status) {
     status.textContent = isWrite
