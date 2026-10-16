@@ -45,6 +45,11 @@ GitHub Actions 운영 문서:
 docs/github_actions_deployment.md
 ```
 
+협업과 보안 정책:
+
+- [기여 가이드](CONTRIBUTING.md)
+- [보안 정책](SECURITY.md)
+
 ## 요구사항
 
 - Python 3.12
