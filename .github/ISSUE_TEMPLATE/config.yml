@@ -1,5 +1,2 @@
 blank_issues_enabled: false
-contact_links:
-  - name: 보안 취약점 비공개 보고
-    url: https://github.com/fabxoe/raredx_ai/security/advisories/new
-    about: 취약점 또는 민감정보 노출은 공개 이슈 대신 비공개로 알려주세요.
+contact_links: []
