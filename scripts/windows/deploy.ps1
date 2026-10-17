@@ -49,9 +49,9 @@ Set-Location $RepoDir
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
-& $GitExe fetch origin main
-& $GitExe checkout main
-& $GitExe pull --ff-only origin main
+& $GitExe -c "safe.directory=$RepoDir" fetch origin main
+& $GitExe -c "safe.directory=$RepoDir" checkout main
+& $GitExe -c "safe.directory=$RepoDir" pull --ff-only origin main
 
 & $UvExe sync --locked --python 3.12 --extra dev
 & $UvExe run pytest -q
