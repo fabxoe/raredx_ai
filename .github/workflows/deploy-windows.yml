@@ -1,0 +1,28 @@
+name: Deploy to Windows server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: raredx-windows-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Manual Windows deployment
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - raredx-windows
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Deploy and verify
+        run: C:\raredx\app\scripts\windows\deploy.ps1
