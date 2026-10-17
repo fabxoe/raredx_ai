@@ -1,33 +1,14 @@
-# GitHub Actions 테스트 및 배포 운영 가이드
-
-> Windows 운영 서버 전환 중이다. 신규 배포는 `Deploy to Windows server`를 사용한다.
-> 기존 Mac workflow와 runner는 Windows 첫 배포 검증 후 제거한다.
-
-## Windows 운영 서버
-
-Windows self-hosted runner에는 `raredx-windows` label이 필요하다. 배포는
-`C:\raredx\app\scripts\windows\deploy.ps1`을 실행하며 다음 항목을 검증한다.
-
-- `main` 브랜치 fast-forward 업데이트
-- UTF-8 모드에서 `uv sync --locked --python 3.12 --extra dev`
-- 전체 pytest 실행
-- 네이티브 Neo4j Windows 서비스와 HTTP 상태 확인
-- `RareDX-App` 예약 작업 재시작
-- 메인 앱과 mapper registry HTTP 상태 확인
-
-서버 전용 `.env`는 `C:\raredx\app\.env`에만 두며 Git에 커밋하지 않는다.
-Neo4j와 FastAPI는 loopback 주소에만 바인딩한다.
-
-이 문서는 RARE_DX_AI 팀원이 GitHub Actions로 테스트 결과를 확인하고, 남는 맥북 서버에 수동 배포하는 절차를 정리한다.
+# GitHub Actions 테스트 및 Windows 배포 운영 가이드
 
 ## 기본 흐름
 
 ```text
 PR 생성 또는 main push
--> CI Action 실행
--> 테스트와 설정 검증 통과 확인
--> main 반영 후 Deploy to spare Mac Action 수동 실행
--> 남는 맥북에서 git pull, 테스트, Neo4j 확인, FastAPI 재시작
+-> GitHub-hosted CI 실행
+-> 테스트와 설정 검증 통과
+-> 승인 및 main 병합
+-> Deploy to Windows server 수동 실행
+-> Windows 서버에서 코드 업데이트, 테스트, 서비스 재시작 및 상태 확인
 ```
 
 ## CI Action
@@ -42,65 +23,53 @@ PR 생성 또는 main push
 - `.env`가 Git에 tracked 되어 있는지 검사
 - tracked 파일에 OpenAI API key 패턴이 들어갔는지 검사
 
-CI는 GitHub-hosted `ubuntu-latest`에서 실행된다. public repo의 PR 테스트에서 남는 맥북 self-hosted runner를 사용하지 않는다.
+CI는 GitHub-hosted `ubuntu-latest`에서 실행된다. 공개 저장소의 PR 코드는
+self-hosted Windows runner에서 실행하지 않는다.
 
-## 수동 배포 Action
+## 수동 Windows 배포
 
-배포 workflow 이름은 `Deploy to spare Mac`이다.
-
-실행 방법:
+배포 workflow 이름은 `Deploy to Windows server`이다.
 
 1. GitHub repository의 `Actions` 탭으로 이동한다.
-2. 왼쪽 workflow 목록에서 `Deploy to spare Mac`을 선택한다.
+2. `Deploy to Windows server`를 선택한다.
 3. `Run workflow`를 누른다.
 4. branch가 `main`인지 확인하고 실행한다.
-5. 로그에서 `main app OK`, `mapper registry OK`, `original mapper wrapper OK`를 확인한다.
+5. 로그에서 테스트 통과와 각 HTTP 상태 확인을 검토한다.
 
-배포 중 수행하는 작업:
+배포 workflow는 `workflow_dispatch`로만 실행되며 동시 배포를 허용하지 않는다.
+러너에는 `raredx-windows` label이 필요하다.
 
-- 남는 맥북의 `~/workbench/raredx_ai`에서 `main` 최신 코드를 받는다.
-- `uv sync --locked --python 3.12 --extra dev`를 실행한다.
-- `uv run pytest -q`를 실행한다.
-- Docker daemon과 Neo4j health를 확인한다.
-- `app.main:app`을 `127.0.0.1:8010`에서 재시작한다.
-- `app.original_hpo_mapper_wrapper:app`을 `127.0.0.1:9001`에서 재시작한다.
+## Windows 서버 구성
 
-## Self-hosted Runner 요구사항
+- 저장소: `C:\raredx\app`
+- 서버 환경 파일: `C:\raredx\app\.env`
+- Python 환경: `C:\raredx\app\.venv`
+- 시스템 uv: `C:\Program Files\uv\uv.exe`
+- Neo4j: 네이티브 Windows 서비스 `neo4j`
+- FastAPI: 예약 작업 `RareDX-App`, `127.0.0.1:8010`
+- GitHub Actions Runner: Windows 서비스, label `raredx-windows`
 
-남는 맥북의 runner에는 `raredx-macbook` label이 필요하다.
+`scripts/windows/deploy.ps1`은 다음 작업을 수행한다.
 
-남는 맥북에는 다음 리소스가 로컬에 있어야 한다.
+- `main` 브랜치 fast-forward 업데이트
+- UTF-8 모드에서 `uv sync --locked --python 3.12 --extra dev`
+- 전체 pytest 실행
+- Neo4j Windows 서비스와 HTTP 상태 확인
+- `RareDX-App` 예약 작업 재시작
+- 메인 앱과 mapper registry HTTP 상태 확인
 
-- `~/workbench/raredx_ai/.env`
-- `~/workbench/raredx_ai/data/raw`
-- `~/workbench/raredx_ai/data/processed`
-- `~/workbench/raredx_ai/data/external/original_hpo_mapper`
-- Docker Desktop 또는 Docker daemon
-- uv
+`.env`와 데이터 파일은 Git에 커밋하지 않는다. OpenAI API key가 필요한 경우에도
+GitHub Secrets가 아닌 서버의 `.env`에만 저장한다. Neo4j와 FastAPI는 loopback
+주소에만 바인딩하고 외부 접근은 별도 인증 프록시를 통한다.
 
-OpenAI API key는 GitHub Secrets에 넣지 않는다. 서버 실행에 필요한 key는 남는 맥북의 `.env`에만 둔다.
-
-## 실패 시 확인 위치
+## 실패 시 확인
 
 - GitHub Actions 실행 로그
-- 남는 맥북의 `/tmp/raredx_app.log`
-- 남는 맥북의 `/tmp/raredx_wrapper.log`
-- Docker 상태:
+- `Get-Service neo4j`
+- `Get-Service 'actions.runner.*'`
+- `Get-ScheduledTask -TaskName RareDX-App`
+- `Invoke-WebRequest http://127.0.0.1:7474/`
+- `Invoke-WebRequest http://127.0.0.1:8010/`
 
-```bash
-docker compose ps
-docker info
-```
-
-OpenAI credit 또는 API key 문제가 있어도 서버가 내려가지는 않아야 한다. 해당 기능 요청은 503 에러 메시지로 반환된다.
-
-## 원복 방법
-
-GitHub Actions 사용을 중단하려면 다음 파일들을 제거하면 된다.
-
-```text
-.github/workflows/ci.yml
-.github/workflows/deploy-spare-mac.yml
-```
-
-남는 맥북 runner까지 제거하려면 GitHub repository Settings의 self-hosted runner 등록을 삭제하고, 남는 맥북의 runner 서비스를 중지한다.
+OpenAI credit 또는 API key 문제가 있어도 기본 서버는 내려가지 않아야 한다.
+해당 기능 요청은 명시적인 오류 응답을 반환해야 한다.
