@@ -5,6 +5,8 @@ $RepoDir = "C:\raredx\app"
 $AppTask = "RareDX-App"
 $AppUrl = "http://127.0.0.1:8010/"
 $MapperUrl = "http://127.0.0.1:8010/api/hpo-mappers"
+$GitExe = "C:\Program Files\Git\cmd\git.exe"
+$UvExe = "C:\Users\main\AppData\Local\Microsoft\WinGet\Links\uv.exe"
 
 function Wait-HttpOk {
     param(
@@ -36,17 +38,23 @@ if (-not (Test-Path (Join-Path $RepoDir ".git"))) {
 if (-not (Test-Path (Join-Path $RepoDir ".env"))) {
     throw "Server environment file not found: $RepoDir\.env"
 }
+if (-not (Test-Path $GitExe)) {
+    throw "Git executable not found: $GitExe"
+}
+if (-not (Test-Path $UvExe)) {
+    throw "uv executable not found: $UvExe"
+}
 
 Set-Location $RepoDir
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
-git fetch origin main
-git checkout main
-git pull --ff-only origin main
+& $GitExe fetch origin main
+& $GitExe checkout main
+& $GitExe pull --ff-only origin main
 
-uv sync --locked --python 3.12 --extra dev
-uv run pytest -q
+& $UvExe sync --locked --python 3.12 --extra dev
+& $UvExe run pytest -q
 
 $neo4j = Get-Service neo4j -ErrorAction Stop
 if ($neo4j.Status -ne "Running") {
