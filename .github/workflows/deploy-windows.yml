@@ -24,5 +24,8 @@ jobs:
         shell: powershell
 
     steps:
+      - name: Check out deployment scripts
+        uses: actions/checkout@v4
+
       - name: Deploy and verify
-        run: C:\raredx\app\scripts\windows\deploy.ps1
+        run: '& "$env:GITHUB_WORKSPACE\scripts\windows\deploy.ps1"'

@@ -6,7 +6,7 @@ $AppTask = "RareDX-App"
 $AppUrl = "http://127.0.0.1:8010/"
 $MapperUrl = "http://127.0.0.1:8010/api/hpo-mappers"
 $GitExe = "C:\Program Files\Git\cmd\git.exe"
-$UvExe = "C:\Users\main\AppData\Local\Microsoft\WinGet\Links\uv.exe"
+$UvExe = "C:\Program Files\uv\uv.exe"
 
 function Wait-HttpOk {
     param(
