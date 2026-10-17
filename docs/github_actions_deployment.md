@@ -1,5 +1,23 @@
 # GitHub Actions 테스트 및 배포 운영 가이드
 
+> Windows 운영 서버 전환 중이다. 신규 배포는 `Deploy to Windows server`를 사용한다.
+> 기존 Mac workflow와 runner는 Windows 첫 배포 검증 후 제거한다.
+
+## Windows 운영 서버
+
+Windows self-hosted runner에는 `raredx-windows` label이 필요하다. 배포는
+`C:\raredx\app\scripts\windows\deploy.ps1`을 실행하며 다음 항목을 검증한다.
+
+- `main` 브랜치 fast-forward 업데이트
+- UTF-8 모드에서 `uv sync --locked --python 3.12 --extra dev`
+- 전체 pytest 실행
+- 네이티브 Neo4j Windows 서비스와 HTTP 상태 확인
+- `RareDX-App` 예약 작업 재시작
+- 메인 앱과 mapper registry HTTP 상태 확인
+
+서버 전용 `.env`는 `C:\raredx\app\.env`에만 두며 Git에 커밋하지 않는다.
+Neo4j와 FastAPI는 loopback 주소에만 바인딩한다.
+
 이 문서는 RARE_DX_AI 팀원이 GitHub Actions로 테스트 결과를 확인하고, 남는 맥북 서버에 수동 배포하는 절차를 정리한다.
 
 ## 기본 흐름
