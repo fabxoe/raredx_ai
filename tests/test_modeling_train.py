@@ -80,21 +80,21 @@ def test_train_baseline_with_patience_stops_early_and_restores_best_weights() ->
     assert restored_loss == pytest.approx(min(history.validation_loss), abs=1e-5)
 
 
-def test_train_baseline_weight_decay_shrinks_bilinear_weight() -> None:
+def test_train_baseline_weight_decay_shrinks_relation_weight() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     plain, _ = train_baseline(package, epochs=20, seed=42, weight_decay=0.0)
     decayed, _ = train_baseline(package, epochs=20, seed=42, weight_decay=1.0)
-    assert decayed.bilinear_weight.norm().item() < plain.bilinear_weight.norm().item()
+    assert decayed.relation_weight.norm().item() < plain.relation_weight.norm().item()
 
 
-def test_train_gnn_default_dims_are_32() -> None:
+def test_train_gnn_default_dims_are_64() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     model, _ = train_gnn(package, epochs=1, seed=42)
-    assert model.hidden_dim == 32
-    assert model.embedding_dim == 32
+    assert model.hidden_dim == 64
+    assert model.embedding_dim == 64
 
 
-def test_train_gnn_weight_decay_shrinks_bilinear_weight() -> None:
+def test_train_gnn_weight_decay_shrinks_relation_weight() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     plain, _ = train_gnn(
         package, epochs=20, hidden_dim=8, embedding_dim=8, seed=42, weight_decay=0.0
@@ -102,7 +102,7 @@ def test_train_gnn_weight_decay_shrinks_bilinear_weight() -> None:
     decayed, _ = train_gnn(
         package, epochs=20, hidden_dim=8, embedding_dim=8, seed=42, weight_decay=1.0
     )
-    assert decayed.bilinear_weight.norm().item() < plain.bilinear_weight.norm().item()
+    assert decayed.relation_weight.norm().item() < plain.relation_weight.norm().item()
 
 
 def test_train_gnn_reduces_loss_on_fixture_graph() -> None:

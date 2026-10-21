@@ -182,7 +182,7 @@ def test_gnn_different_seeds_differ() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     model_a = _build_gnn(package, seed=1)
     model_b = _build_gnn(package, seed=2)
-    assert not torch.equal(model_a.bilinear_weight, model_b.bilinear_weight)
+    assert not torch.equal(model_a.relation_weight, model_b.relation_weight)
 
 
 def test_gnn_does_not_touch_global_rng_state() -> None:

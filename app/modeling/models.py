@@ -1,7 +1,7 @@
 """Disease-gene link prediction models.
 
-- `BaselineScorer`: no-graph baseline (gene prior + bilinear disease/gene scorer).
-- `GNNLinkPredictor`: 2-layer heterogeneous GNN encoder + bilinear decoder.
+- `BaselineScorer`: no-graph baseline (gene prior + DistMult disease/gene scorer).
+- `GNNLinkPredictor`: 2-layer heterogeneous GNN encoder + DistMult decoder.
 """
 
 from __future__ import annotations
@@ -38,13 +38,18 @@ def compute_gene_prior(
 
 
 class BaselineScorer(nn.Module):
-    """No-graph baseline: gene prior logit plus a learned bilinear term.
+    """No-graph baseline: gene prior logit plus a learned DistMult term.
 
     Combines a fixed, precomputed gene prior (how often a gene appears as a
-    positive label in the train split) with a learned bilinear scorer over
-    small disease/gene embeddings:
+    positive label in the train split) with a learned DistMult-style scorer
+    over small disease/gene embeddings:
 
-        logit = gene_prior_logit[gene] + disease_emb @ W @ gene_emb
+        logit = gene_prior_logit[gene] + sum(disease_emb * relation_weight * gene_emb)
+
+    DistMult (a diagonal relation vector) replaces an earlier full bilinear
+    matrix (`embedding_dim x embedding_dim`): with only ~6,700 train positives,
+    the full matrix (`embedding_dim**2` parameters) overfit badly. The
+    diagonal form has `embedding_dim` parameters instead.
     """
 
     def __init__(
@@ -83,9 +88,9 @@ class BaselineScorer(nn.Module):
             num_genes, embedding_dim, _weight=gene_weight
         )
 
-        bilinear_weight = torch.empty(embedding_dim, embedding_dim)
-        nn.init.xavier_uniform_(bilinear_weight, generator=generator)
-        self.bilinear_weight = nn.Parameter(bilinear_weight)
+        relation_weight = torch.empty(embedding_dim)
+        nn.init.normal_(relation_weight, generator=generator)
+        self.relation_weight = nn.Parameter(relation_weight)
 
         gene_prior_values = torch.tensor(
             [gene_prior.get(gene_id, 0.0) for gene_id in self.gene_ids],
@@ -100,16 +105,14 @@ class BaselineScorer(nn.Module):
         disease_emb = self.disease_embedding(disease_idx)
         gene_emb = self.gene_embedding(gene_idx)
 
-        bilinear_term = torch.einsum(
-            "bi,ij,bj->b", disease_emb, self.bilinear_weight, gene_emb
-        )
+        distmult_term = (disease_emb * self.relation_weight * gene_emb).sum(dim=-1)
         gene_prior_logit = self.gene_prior[gene_idx]
 
-        return gene_prior_logit + bilinear_term
+        return gene_prior_logit + distmult_term
 
 
 class GNNLinkPredictor(nn.Module):
-    """Two-layer heterogeneous GNN encoder with a bilinear disease/gene decoder.
+    """Two-layer heterogeneous GNN encoder with a DistMult disease/gene decoder.
 
     Encoder:
         learned per-node input embedding (per node type, hidden_dim)
@@ -194,7 +197,10 @@ class GNNLinkPredictor(nn.Module):
                     for node_type in self.OUTPUT_NODE_TYPES
                 }
             )
-            self.bilinear_weight = nn.Parameter(torch.empty(embedding_dim, embedding_dim))
+            # DistMult decoder: a diagonal relation vector (embedding_dim params)
+            # rather than a full embedding_dim x embedding_dim bilinear matrix --
+            # far fewer parameters to overfit given ~6,700 train positives.
+            self.relation_weight = nn.Parameter(torch.empty(embedding_dim))
 
         self._reset_parameters(torch.Generator().manual_seed(seed))
         # Dropout during training draws Bernoulli masks from this model-owned
@@ -206,7 +212,7 @@ class GNNLinkPredictor(nn.Module):
         """Deterministically (re)initialize all parameters from `generator`."""
         with torch.no_grad():
             for name, param in self.named_parameters():
-                if name.startswith("input_embeddings."):
+                if name.startswith("input_embeddings.") or name == "relation_weight":
                     nn.init.normal_(param, generator=generator)
                 elif param.dim() >= 2:
                     nn.init.xavier_uniform_(param, generator=generator)
@@ -262,9 +268,6 @@ class GNNLinkPredictor(nn.Module):
         gene_idx: torch.LongTensor,
     ) -> torch.Tensor:
         """Return a 1-D logit tensor, one per (disease, gene) input pair."""
-        return torch.einsum(
-            "bi,ij,bj->b",
-            disease_emb[disease_idx],
-            self.bilinear_weight,
-            gene_emb[gene_idx],
-        )
+        return (
+            disease_emb[disease_idx] * self.relation_weight * gene_emb[gene_idx]
+        ).sum(dim=-1)

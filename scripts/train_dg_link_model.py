@@ -111,13 +111,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=150,
+        default=400,
         help="epoch budget; with --patience set (the default), training usually stops earlier",
     )
     parser.add_argument(
         "--patience",
         type=int,
-        default=15,
+        default=20,
         help=(
             "stop training after this many epochs with no new best validation loss, and "
             "restore the best epoch's weights; pass 0 to disable early stopping and always "

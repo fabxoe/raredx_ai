@@ -274,8 +274,8 @@ def train_gnn(
     epochs: int = 50,
     lr: float = 0.01,
     weight_decay: float = 0.0,
-    hidden_dim: int = 32,
-    embedding_dim: int = 32,
+    hidden_dim: int = 64,
+    embedding_dim: int = 64,
     seed: int = 42,
     supervision_ratio: float = DEFAULT_SUPERVISION_RATIO,
     patience: int | None = None,
@@ -297,9 +297,12 @@ def train_gnn(
     returns the final epoch's weights, unchanged from prior behavior.
 
     `weight_decay` adds L2 regularization via Adam's own `weight_decay` argument.
-    `hidden_dim`/`embedding_dim` default to 32 (down from an earlier 64): with only
-    6,673 train positives, a 64-dim model has far more parameters than the data can
-    support, which is most of why it overfits within ~20-40 epochs on this dataset.
+    `hidden_dim`/`embedding_dim` default to 64. An earlier bilinear decoder
+    (`embedding_dim**2` parameters) overfit badly at this width with only 6,673
+    train positives and was shrunk to 32 as a workaround; the decoder is now
+    DistMult (`embedding_dim` parameters -- see `GNNLinkPredictor`), which
+    tolerates 64-dim node embeddings better, confirmed by a grid sweep on the
+    real dataset (highest validation MRR at weight_decay=1e-4, dim=64).
     """
     torch.manual_seed(seed)
     split_generator = torch.Generator().manual_seed(seed)
