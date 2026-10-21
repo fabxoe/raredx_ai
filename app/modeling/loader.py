@@ -222,6 +222,123 @@ def build_hetero_data(
     return data
 
 
+SPLIT_NAMES: tuple[str, str, str] = ("train", "validation", "test")
+DG_RELATION = "ASSOCIATED_WITH"
+
+
+def _format_pairs(pairs: set[tuple[str, str]], limit: int = 5) -> str:
+    shown = sorted(pairs)[:limit]
+    suffix = f" (+{len(pairs) - limit} more)" if len(pairs) > limit else ""
+    return f"{shown}{suffix}"
+
+
+def _check_pairs_resolve(
+    kind: str, groups: dict[str, list[tuple[str, str]]], node_indexes: dict[str, NodeIndex]
+) -> None:
+    disease_index = node_indexes["Disease"].index
+    gene_index = node_indexes["Gene"].index
+    for split, pairs in groups.items():
+        for disease_id, gene_id in pairs:
+            if disease_id not in disease_index:
+                raise ValueError(
+                    f"{kind} {split} pair ({disease_id!r}, {gene_id!r}): disease id "
+                    f"{disease_id!r} is not a Disease node"
+                )
+            if gene_id not in gene_index:
+                raise ValueError(
+                    f"{kind} {split} pair ({disease_id!r}, {gene_id!r}): gene id "
+                    f"{gene_id!r} is not a Gene node"
+                )
+
+
+def _check_splits_disjoint(kind: str, sets: dict[str, set[tuple[str, str]]]) -> None:
+    for i, first in enumerate(SPLIT_NAMES):
+        for second in SPLIT_NAMES[i + 1 :]:
+            overlap = sets[first] & sets[second]
+            if overlap:
+                raise ValueError(
+                    f"{kind} splits {first!r} and {second!r} overlap on "
+                    f"{len(overlap)} pair(s): {_format_pairs(overlap)}"
+                )
+
+
+def validate_positive_invariants(
+    node_indexes: dict[str, NodeIndex],
+    message_edges: list[dict[str, Any]],
+    positives: dict[str, list[tuple[str, str]]],
+) -> None:
+    """Positive-side anti-leakage invariants; raises ``ValueError`` on the first violation.
+
+    1. Every positive pair's disease id is a ``Disease`` node and gene id a ``Gene``
+       node (fail at load time instead of a bare ``KeyError`` deep in training).
+    2. The train/validation/test positive splits are pairwise disjoint.
+    3. No validation/test positive pair appears as an ``ASSOCIATED_WITH`` edge of the
+       message-passing graph (val/test leakage into message passing).
+    4. The message-passing ``ASSOCIATED_WITH`` pairs are exactly the train positives.
+    """
+    _check_pairs_resolve("positive", positives, node_indexes)
+    positive_sets = {split: set(positives.get(split, [])) for split in SPLIT_NAMES}
+    _check_splits_disjoint("positive", positive_sets)
+
+    message_pairs = {
+        (edge["source_id"], edge["target_id"])
+        for edge in message_edges
+        if edge.get("relation") == DG_RELATION
+    }
+    for heldout in ("validation", "test"):
+        leaked = message_pairs & positive_sets[heldout]
+        if leaked:
+            raise ValueError(
+                f"leakage: {len(leaked)} {heldout} positive pair(s) present as "
+                f"{DG_RELATION} edges in the message-passing graph: {_format_pairs(leaked)}"
+            )
+    if message_pairs != positive_sets["train"]:
+        extra = message_pairs - positive_sets["train"]
+        missing = positive_sets["train"] - message_pairs
+        raise ValueError(
+            f"message-passing {DG_RELATION} edges must equal the train positives: "
+            f"{len(extra)} edge(s) not in train split {_format_pairs(extra)}, "
+            f"{len(missing)} train pair(s) missing from graph {_format_pairs(missing)}"
+        )
+
+
+def validate_negative_invariants(
+    node_indexes: dict[str, NodeIndex],
+    positives: dict[str, list[tuple[str, str]]],
+    negatives: dict[str, list[tuple[str, str]]],
+) -> None:
+    """Negative-side invariants; raises ``ValueError`` on the first violation.
+
+    Every negative pair resolves to real Disease/Gene nodes; the train/validation/test
+    negative splits are pairwise disjoint; and no negative is a known positive of any split.
+    """
+    _check_pairs_resolve("negative", negatives, node_indexes)
+    negative_sets = {split: set(negatives.get(split, [])) for split in SPLIT_NAMES}
+    _check_splits_disjoint("negative", negative_sets)
+
+    all_positives: set[tuple[str, str]] = set()
+    for pairs in positives.values():
+        all_positives.update(pairs)
+    for split, pairs in negative_sets.items():
+        collision = pairs & all_positives
+        if collision:
+            raise ValueError(
+                f"negative {split!r} split contains {len(collision)} known positive "
+                f"pair(s): {_format_pairs(collision)}"
+            )
+
+
+def validate_graph_package_invariants(
+    node_indexes: dict[str, NodeIndex],
+    message_edges: list[dict[str, Any]],
+    positives: dict[str, list[tuple[str, str]]],
+    negatives: dict[str, list[tuple[str, str]]],
+) -> None:
+    """Run both positive- and negative-side anti-leakage checks (see each helper)."""
+    validate_positive_invariants(node_indexes, message_edges, positives)
+    validate_negative_invariants(node_indexes, positives, negatives)
+
+
 @dataclass
 class GraphPackage:
     """Complete graph package with data, node indexes, and train/validation/test splits."""
@@ -250,6 +367,10 @@ def load_graph_package(graph_dir: Path, *, seed: int = 42) -> GraphPackage:
 
     Returns:
         GraphPackage with composed data, node_indexes, positives, and negatives.
+
+    Raises:
+        ValueError: if the inputs violate an anti-leakage / referential invariant
+            (see `validate_positive_invariants` / `validate_negative_invariants`).
     """
     graph_dir = Path(graph_dir)
 
@@ -269,6 +390,11 @@ def load_graph_package(graph_dir: Path, *, seed: int = 42) -> GraphPackage:
         "test": load_pair_csv(graph_dir / "splits/test.csv"),
     }
 
+    # Enforce anti-leakage invariants here, not only in the upstream builder.
+    # Positive-side checks run before negative splitting so a corrupted positive split
+    # surfaces as its own error rather than as a negative-pool sizing error.
+    validate_positive_invariants(node_indexes, message_edges, positives)
+
     # Load and split negative pairs
     all_negatives = load_negative_pairs_csv(graph_dir / "negative_pairs.csv")
     split_sizes = {
@@ -277,6 +403,8 @@ def load_graph_package(graph_dir: Path, *, seed: int = 42) -> GraphPackage:
         "test": len(positives["test"]),
     }
     negatives = split_negative_pairs(all_negatives, split_sizes=split_sizes, seed=seed)
+
+    validate_negative_invariants(node_indexes, positives, negatives)
 
     # Build HeteroData
     data = build_hetero_data(node_indexes, message_edges)
