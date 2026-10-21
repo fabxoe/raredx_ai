@@ -30,6 +30,7 @@ Protocol (see docs/superpowers/specs/2026-10-21-dg-link-prediction-modeling-desi
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -109,12 +110,31 @@ def _is_cold_start(
     return position is None or position not in connected.get(node_type, set())
 
 
-def _score_rank(score_pair: ScorePairFn, pairs: list[Pair]) -> float:
-    """Score ``pairs`` (true pair first) in one batch and return the true pair's rank."""
+def _score_rank(
+    score_pair: ScorePairFn, pairs: list[Pair], direction: str, true_pair: Pair
+) -> float:
+    """Score ``pairs`` (true pair first) in one batch and return the true pair's rank.
+
+    Raises:
+        ValueError: if ``score_pair`` returns the wrong number of scores, or if any
+            score (the true pair's or a candidate's) is non-finite (NaN/inf). A
+            non-finite score would otherwise silently collapse to rank 1 via Python's
+            comparison semantics (``x > nan`` and ``x == nan`` are both ``False``),
+            masking a diverged model as a perfect one.
+    """
     scores = [float(score) for score in score_pair(pairs)]
     if len(scores) != len(pairs):
         raise ValueError(
             f"score_pair returned {len(scores)} scores for {len(pairs)} pairs"
+        )
+    non_finite_count = sum(1 for score in scores if not math.isfinite(score))
+    if non_finite_count:
+        disease_id, gene_id = true_pair
+        raise ValueError(
+            f"score_pair returned {non_finite_count} non-finite score(s) "
+            f"(NaN/inf) while evaluating {direction} for true pair "
+            f"(disease={disease_id!r}, gene={gene_id!r}); cannot compute a "
+            "meaningful rank from non-finite scores"
         )
     return _mean_rank_of_first(scores)
 
@@ -135,7 +155,8 @@ def evaluate_link_prediction(
 
     Raises:
         KeyError: if ``split`` is not a key of ``package.positives``.
-        ValueError: if ``score_pair`` returns the wrong number of scores.
+        ValueError: if ``score_pair`` returns the wrong number of scores, or returns
+            any non-finite (NaN/inf) score.
     """
     eval_pairs = package.positives[split]
 
@@ -162,7 +183,10 @@ def evaluate_link_prediction(
         # Gene corruption: hold disease fixed, rank the true gene.
         gene_pool = _ordered_pool(rankable_genes, genes_by_disease[disease_id], gene_id)
         gene_rank = _score_rank(
-            score_pair, [true_pair] + [(disease_id, candidate) for candidate in gene_pool]
+            score_pair,
+            [true_pair] + [(disease_id, candidate) for candidate in gene_pool],
+            "gene_corruption",
+            true_pair,
         )
         if _is_cold_start(GENE_TYPE, gene_id, package, connected):
             cold_gene_ranks.append(gene_rank)
@@ -172,7 +196,10 @@ def evaluate_link_prediction(
         # Disease corruption: hold gene fixed, rank the true disease.
         disease_pool = _ordered_pool(rankable_diseases, diseases_by_gene[gene_id], disease_id)
         disease_rank = _score_rank(
-            score_pair, [true_pair] + [(candidate, gene_id) for candidate in disease_pool]
+            score_pair,
+            [true_pair] + [(candidate, gene_id) for candidate in disease_pool],
+            "disease_corruption",
+            true_pair,
         )
         if _is_cold_start(DISEASE_TYPE, disease_id, package, connected):
             cold_disease_ranks.append(disease_rank)

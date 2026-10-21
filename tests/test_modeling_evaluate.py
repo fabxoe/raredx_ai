@@ -329,3 +329,28 @@ def test_scorer_returning_wrong_length_raises() -> None:
 
     with pytest.raises(ValueError):
         evaluate_link_prediction(bad_scorer, package, "validation")
+
+
+def test_scorer_returning_nan_for_true_pair_raises() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    true_pairs = set(package.positives["validation"])
+
+    def nan_for_true_pair_scorer(pairs: list[Pair]) -> list[float]:
+        return [float("nan") if pair in true_pairs else 0.0 for pair in pairs]
+
+    # Without the finiteness check, a NaN true-pair score would silently
+    # compute to rank 1 (nan > x and nan == x are both False), reporting a
+    # perfect Hits@1/MRR for a completely broken scorer.
+    with pytest.raises(ValueError, match="non-finite"):
+        evaluate_link_prediction(nan_for_true_pair_scorer, package, "validation")
+
+
+def test_scorer_returning_nan_for_a_candidate_raises() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+
+    def nan_for_one_candidate_scorer(pairs: list[Pair]) -> list[float]:
+        # Poison exactly one candidate (not the true pair, which is pairs[0]).
+        return [0.0 if index == 0 else float("nan") for index, _ in enumerate(pairs)]
+
+    with pytest.raises(ValueError, match="non-finite"):
+        evaluate_link_prediction(nan_for_one_candidate_scorer, package, "validation")
