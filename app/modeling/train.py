@@ -10,7 +10,12 @@ from torch import nn
 from torch_geometric.data import HeteroData
 
 from app.modeling.loader import GraphPackage, NodeIndex
-from app.modeling.models import BaselineScorer, GNNLinkPredictor, compute_gene_prior
+from app.modeling.models import (
+    AssociatedWithAggr,
+    BaselineScorer,
+    GNNLinkPredictor,
+    compute_gene_prior,
+)
 from app.modeling.scoring import pairs_to_index_tensors
 
 
@@ -277,7 +282,7 @@ def train_gnn(
     seed: int = 42,
     supervision_ratio: float = DEFAULT_SUPERVISION_RATIO,
     patience: int | None = None,
-    use_edge_weights: bool = False,
+    associated_with_aggr: AssociatedWithAggr = "mean",
 ) -> tuple[GNNLinkPredictor, TrainingHistory]:
     """Train `GNNLinkPredictor` on `package`'s train split, tracking validation loss too.
 
@@ -303,12 +308,12 @@ def train_gnn(
     tolerates 64-dim node embeddings better, confirmed by a grid sweep on the
     real dataset (highest validation MRR at weight_decay=1e-4, dim=64).
 
-    `use_edge_weights` (default off) only takes effect if `package.data` (and the
-    per-epoch pruned graph `build_gnn_epoch_batch` derives from it) already
-    carries an `edge_weight` on `ASSOCIATED_WITH`/`rev_ASSOCIATED_WITH` -- e.g.
-    attached beforehand via `app/modeling/edge_weights.py`. This function does not
-    attach weights itself; it only decides whether `GNNLinkPredictor` is built to
-    use them if present.
+    `associated_with_aggr` ("mean", the default, or "sum") is passed straight to
+    `GNNLinkPredictor` -- see its docstring for what this changes and why. With
+    "sum", an `edge_weight` already attached to `package.data`'s
+    `ASSOCIATED_WITH`/`rev_ASSOCIATED_WITH` (e.g. via
+    `app/modeling/edge_weights.py`) is used if present; this function does not
+    attach one itself.
     """
     torch.manual_seed(seed)
     split_generator = torch.Generator().manual_seed(seed)
@@ -322,7 +327,7 @@ def train_gnn(
         hidden_dim=hidden_dim,
         embedding_dim=embedding_dim,
         seed=seed,
-        use_edge_weights=use_edge_weights,
+        associated_with_aggr=associated_with_aggr,
     )
 
     val_disease_idx, val_gene_idx, val_labels = _build_pair_batch(package, "validation")

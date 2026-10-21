@@ -121,7 +121,7 @@ def test_train_gnn_weight_decay_shrinks_relation_weight() -> None:
     assert decayed.relation_weight.norm().item() < plain.relation_weight.norm().item()
 
 
-def test_train_gnn_use_edge_weights_runs_end_to_end_on_weighted_package() -> None:
+def test_train_gnn_associated_with_aggr_sum_runs_end_to_end_on_weighted_package() -> None:
     from app.modeling.edge_weights import attach_associated_with_weights
 
     package = load_graph_package(FIXTURE_DIR, seed=42)
@@ -134,9 +134,9 @@ def test_train_gnn_use_edge_weights_runs_end_to_end_on_weighted_package() -> Non
     package.data = attach_associated_with_weights(package.data, package.node_indexes, weights)
 
     model, history = train_gnn(
-        package, epochs=10, hidden_dim=8, embedding_dim=8, seed=42, use_edge_weights=True
+        package, epochs=10, hidden_dim=8, embedding_dim=8, seed=42, associated_with_aggr="sum"
     )
-    assert model.use_edge_weights is True
+    assert model.associated_with_aggr == "sum"
     assert len(history.train_loss) == 10
     assert all(loss == loss for loss in history.train_loss)  # no NaNs
 

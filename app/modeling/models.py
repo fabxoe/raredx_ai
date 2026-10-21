@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -13,11 +15,18 @@ from torch_geometric.data import HeteroData
 from torch_geometric.nn import GraphConv, HeteroConv, SAGEConv
 
 EdgeType = tuple[str, str, str]
+AssociatedWithAggr = Literal["mean", "sum"]
 
-# Relations that carry a learned `edge_weight` (see app/modeling/edge_weights.py)
-# when `GNNLinkPredictor(..., use_edge_weights=True)`. SAGEConv has no edge_weight
-# support, so these two use GraphConv instead; every other relation keeps SAGEConv.
-WEIGHTED_RELATIONS: frozenset[str] = frozenset({"ASSOCIATED_WITH", "rev_ASSOCIATED_WITH"})
+# `GNNLinkPredictor(..., associated_with_aggr=...)` only changes these two
+# relations' conv/aggregation; every other relation always stays SAGEConv/mean.
+# Weighting (app/modeling/edge_weights.py) is a separate, optional add-on on top
+# of "sum": edge_weight is only ever read when associated_with_aggr == "sum"
+# (GraphConv supports it, SAGEConv does not), and "sum" works fine with no
+# weights attached too (every edge_weight defaults to 1). A 5-seed experiment
+# found "sum" alone -- no real weights, just the aggregation switch -- roughly
+# doubled validation/test Hits@50 over "mean" on the real dataset; see
+# docs/data/modeling_results_v4.md.
+ASSOCIATED_WITH_RELATIONS: frozenset[str] = frozenset({"ASSOCIATED_WITH", "rev_ASSOCIATED_WITH"})
 
 
 def compute_gene_prior(
@@ -133,17 +142,28 @@ class GNNLinkPredictor(nn.Module):
     - Its separate root (self) weight preserves a node's own embedding, so
       nodes with no incoming edges of a relation (e.g. a gene with no train
       association) still get a well-defined, non-degenerate representation.
-    - Mean aggregation normalizes away the heavy degree skew of hub genes /
-      broad phenotypes, unlike GraphConv's sum aggregation.
     - It is cheap and deterministic on CPU, unlike attention (GATConv), which
       adds parameters and variance that a small labeled set cannot support.
 
-    `use_edge_weights=True` (default off) switches `ASSOCIATED_WITH`/
-    `rev_ASSOCIATED_WITH` specifically from `SAGEConv` to `GraphConv`, which
-    accepts an `edge_weight` -- SAGEConv has no such support. `encode(data)`
-    only forwards `edge_weight` for those two relations (and only when `data`
-    actually carries one, e.g. via `app/modeling/edge_weights.py`); every other
-    relation stays on plain unweighted `SAGEConv`, unchanged.
+    `associated_with_aggr="sum"` (default `"mean"`) switches `ASSOCIATED_WITH`/
+    `rev_ASSOCIATED_WITH` specifically from `SAGEConv` (mean) to `GraphConv`
+    (sum) -- both have identical parameter counts, so this is purely an
+    aggregation-function change. The original mean choice assumed it would
+    normalize away hub-gene degree skew; a 5-seed experiment on the real
+    dataset found the opposite -- "sum", with no edge weighting at all, roughly
+    doubled validation/test Hits@50 over "mean" (see
+    `docs/data/modeling_results_v4.md`). "sum" is not yet the default pending
+    further validation (only this one relation was tried; IS_A/HAS_PHENOTYPE
+    stay untested). Every other relation always stays on `SAGEConv`/mean.
+
+    Weighting is a separate, optional layer on top of `"sum"`: `GraphConv`
+    accepts an `edge_weight` that `SAGEConv` cannot, so `encode(data)` only
+    ever forwards one (and only when `data` actually carries one, e.g. via
+    `app/modeling/edge_weights.py`) when `associated_with_aggr == "sum"`. A
+    same-sized experiment comparing real per-pair weights (evidence score / a
+    train-only IDF penalty) against uniform weight found no consistent
+    difference between them -- the win above comes entirely from switching to
+    `"sum"`, not from the weights themselves.
 
     The graph has no node features, so input features are learned per-node
     embeddings (transductive). That requires node counts per type, which
@@ -164,16 +184,21 @@ class GNNLinkPredictor(nn.Module):
         hidden_dim: int = 64,
         embedding_dim: int = 64,
         seed: int = 42,
-        use_edge_weights: bool = False,
+        associated_with_aggr: AssociatedWithAggr = "mean",
     ) -> None:
         super().__init__()
+
+        if associated_with_aggr not in ("mean", "sum"):
+            raise ValueError(
+                f"associated_with_aggr must be 'mean' or 'sum', got {associated_with_aggr!r}"
+            )
 
         node_types, edge_types = metadata
         self.node_types: list[str] = list(node_types)
         self.edge_types: list[EdgeType] = [tuple(edge_type) for edge_type in edge_types]
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
-        self.use_edge_weights = use_edge_weights
+        self.associated_with_aggr = associated_with_aggr
 
         for node_type in self.OUTPUT_NODE_TYPES:
             if node_type not in self.node_types:
@@ -195,7 +220,7 @@ class GNNLinkPredictor(nn.Module):
             )
             def _conv_for(edge_type: EdgeType) -> nn.Module:
                 relation = edge_type[1]
-                if use_edge_weights and relation in WEIGHTED_RELATIONS:
+                if associated_with_aggr == "sum" and relation in ASSOCIATED_WITH_RELATIONS:
                     return GraphConv((hidden_dim, hidden_dim), hidden_dim)
                 return SAGEConv((hidden_dim, hidden_dim), hidden_dim)
 
@@ -259,9 +284,9 @@ class GNNLinkPredictor(nn.Module):
 
         edge_index_dict = data.edge_index_dict
         edge_weight_dict: dict[EdgeType, torch.Tensor] = {}
-        if self.use_edge_weights:
+        if self.associated_with_aggr == "sum":
             for edge_type in self.edge_types:
-                if edge_type[1] not in WEIGHTED_RELATIONS:
+                if edge_type[1] not in ASSOCIATED_WITH_RELATIONS:
                     continue
                 weight = getattr(data[edge_type], "edge_weight", None)
                 if weight is not None:
