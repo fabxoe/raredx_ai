@@ -237,6 +237,16 @@ def test_cold_start_routing_is_a_partition_in_both_directions() -> None:
         assert report.combined.count == (
             report.gene_corruption.count + report.disease_corruption.count
         )
+        # Full-set view merges main + cold-start buckets by construction.
+        assert report.all_gene_corruption.count == (
+            report.gene_corruption.count + report.cold_start_gene_corruption.count
+        )
+        assert report.all_disease_corruption.count == (
+            report.disease_corruption.count + report.cold_start_disease_corruption.count
+        )
+        assert report.all_gene_corruption.count == n
+        assert report.all_disease_corruption.count == n
+        assert report.all_combined.count == 2 * n
 
 
 def test_test_split_routes_only_gene_side_to_cold_start() -> None:
@@ -260,6 +270,45 @@ def test_cold_start_metrics_are_computed_not_dropped() -> None:
     report = evaluate_link_prediction(perfect, package, "test")
     assert report.cold_start_gene_corruption.hits_at_1 == 1.0
     assert report.cold_start_gene_corruption.mrr == 1.0
+
+
+# --- full-set (main + cold-start) view --------------------------------------
+
+
+def test_all_metrics_merge_main_and_cold_start_ranks() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+
+    # Test pair ORPHA:1/HGNC:5: gene side is cold-start (HGNC:5 has no edges),
+    # disease side is main. Gene candidates score below the true pair -> rank 1;
+    # all 3 disease candidates (ORPHA:2/3/4 with HGNC:5) score above -> rank 4.
+    def scorer(pairs: list[Pair]) -> list[float]:
+        scores = {("ORPHA:1", "HGNC:5"): 1.0, ("ORPHA:2", "HGNC:5"): 5.0,
+                  ("ORPHA:3", "HGNC:5"): 5.0, ("ORPHA:4", "HGNC:5"): 5.0}
+        return [scores.get(pair, 0.0) for pair in pairs]
+
+    report = evaluate_link_prediction(scorer, package, "test")
+    # Main-only view sees just the disease-side rank 4.
+    assert report.combined == RankingMetrics(
+        hits_at_1=0.0, hits_at_10=1.0, hits_at_50=1.0, mrr=0.25, count=1
+    )
+    assert report.all_gene_corruption == report.cold_start_gene_corruption == RankingMetrics(
+        hits_at_1=1.0, hits_at_10=1.0, hits_at_50=1.0, mrr=1.0, count=1
+    )
+    assert report.all_disease_corruption == report.disease_corruption
+    # Full-set view averages both ranks {1, 4}.
+    assert report.all_combined == RankingMetrics(
+        hits_at_1=0.5, hits_at_10=1.0, hits_at_50=1.0, mrr=pytest.approx(0.625), count=2
+    )
+
+
+def test_all_metrics_equal_main_metrics_when_no_cold_start() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    report = evaluate_link_prediction(RecordingScorer(), package, "validation")
+    assert report.cold_start_gene_corruption.count == 0
+    assert report.cold_start_disease_corruption.count == 0
+    assert report.all_gene_corruption == report.gene_corruption
+    assert report.all_disease_corruption == report.disease_corruption
+    assert report.all_combined == report.combined
 
 
 def _synthetic_package() -> GraphPackage:

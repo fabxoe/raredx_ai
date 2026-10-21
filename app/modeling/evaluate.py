@@ -58,13 +58,20 @@ class RankingMetrics:
 
 @dataclass
 class EvaluationReport:
-    """Per-direction, combined, and cold-start ranking metrics for one split."""
+    """Per-direction, combined, cold-start, and full-set ranking metrics for one split.
+
+    ``gene_corruption`` / ``disease_corruption`` / ``combined`` exclude cold-start
+    pairs; ``cold_start_*`` hold only cold-start pairs; ``all_*`` hold every pair.
+    """
 
     gene_corruption: RankingMetrics
     disease_corruption: RankingMetrics
     combined: RankingMetrics
     cold_start_gene_corruption: RankingMetrics
     cold_start_disease_corruption: RankingMetrics
+    all_gene_corruption: RankingMetrics
+    all_disease_corruption: RankingMetrics
+    all_combined: RankingMetrics
 
 
 def _metrics_from_ranks(ranks: list[float]) -> RankingMetrics:
@@ -206,10 +213,17 @@ def evaluate_link_prediction(
         else:
             disease_ranks.append(disease_rank)
 
+    # Every aggregate below is reduced from the same raw per-pair rank lists; the
+    # "all_*" views merge the main and cold-start buckets without re-scoring.
+    all_gene_ranks = gene_ranks + cold_gene_ranks
+    all_disease_ranks = disease_ranks + cold_disease_ranks
     return EvaluationReport(
         gene_corruption=_metrics_from_ranks(gene_ranks),
         disease_corruption=_metrics_from_ranks(disease_ranks),
         combined=_metrics_from_ranks(gene_ranks + disease_ranks),
         cold_start_gene_corruption=_metrics_from_ranks(cold_gene_ranks),
         cold_start_disease_corruption=_metrics_from_ranks(cold_disease_ranks),
+        all_gene_corruption=_metrics_from_ranks(all_gene_ranks),
+        all_disease_corruption=_metrics_from_ranks(all_disease_ranks),
+        all_combined=_metrics_from_ranks(all_gene_ranks + all_disease_ranks),
     )

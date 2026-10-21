@@ -31,6 +31,16 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
     assert set(report["gnn"]) == {"validation", "test"}
     assert "hits_at_1" in report["baseline"]["test"]["combined"]
     assert "hits_at_1" in report["gnn"]["test"]["combined"]
+    for model in ("baseline", "gnn"):
+        for split in ("validation", "test"):
+            split_report = report[model][split]
+            for key in ("all_gene_corruption", "all_disease_corruption", "all_combined"):
+                assert key in split_report
+            assert "hits_at_1" in split_report["all_combined"]
+            assert split_report["all_gene_corruption"]["count"] == (
+                split_report["gene_corruption"]["count"]
+                + split_report["cold_start_gene_corruption"]["count"]
+            )
 
 
 def test_cli_creates_output_directory_if_missing(tmp_path: Path) -> None:
