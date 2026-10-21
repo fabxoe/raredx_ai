@@ -80,6 +80,22 @@ def test_train_baseline_with_patience_stops_early_and_restores_best_weights() ->
     assert restored_loss == pytest.approx(min(history.validation_loss), abs=1e-5)
 
 
+def test_train_baseline_raises_on_empty_validation_split() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    package.positives["validation"] = []
+    package.negatives["validation"] = []
+    with pytest.raises(ValueError, match="validation"):
+        train_baseline(package, epochs=2, seed=42)
+
+
+def test_train_gnn_raises_on_empty_validation_split() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    package.positives["validation"] = []
+    package.negatives["validation"] = []
+    with pytest.raises(ValueError, match="validation"):
+        train_gnn(package, epochs=2, hidden_dim=8, embedding_dim=8, seed=42)
+
+
 def test_train_baseline_weight_decay_shrinks_relation_weight() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     plain, _ = train_baseline(package, epochs=20, seed=42, weight_decay=0.0)

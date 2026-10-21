@@ -73,6 +73,12 @@ def _build_pair_batch(
 
     positives = package.positives[split]
     negatives = package.negatives[split]
+    if not positives and not negatives:
+        raise ValueError(
+            f"split {split!r} has no positive or negative pairs; refusing to "
+            "train/evaluate on an empty batch (BCE loss on an empty batch is NaN, "
+            "which would otherwise silently corrupt early stopping)"
+        )
 
     pos_disease_idx, pos_gene_idx = _pairs_to_index_tensors(positives, disease_index, gene_index)
     neg_disease_idx, neg_gene_idx = _pairs_to_index_tensors(negatives, disease_index, gene_index)
