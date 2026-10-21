@@ -10,8 +10,7 @@
 
 - GitHub 브랜치(`main`): `app/modeling/` 코드, 스펙·플랜 문서, tests 및 synthetic fixtures.
 - 별도 Drive 폴더: 실제 학습된 모델 가중치(`.pt`)와 평가 리포트(JSON).
-- 팀 데이터 폴더(기존): [Data_Knowledge_Graph_v1_2026-10-12](https://drive.google.com/drive/folders/1tkUnELdJktpQYmoFMG75BawPNR4xn9Y_) — **이 폴더 안의 기존 파일은 건드리지 않습니다.**
-- 새 하위 폴더(생성 예정, 아직 업로드 전): `Modeling_Results_v1_2026-10-21` — 위 팀 데이터 폴더 바로 아래에 새로 만들어서 올립니다. 기존 `Data_Knowledge_Graph_v1_2026-10-12` 폴더/파일과 이름이 겹치지 않습니다.
+- 팀 모델링 폴더: [05.07_ai_modeling-ai 모델링](https://drive.google.com/drive/folders/1bMJLq-aQhGafGkd2u2BjP6CtbmJ4ndpU) 아래 새 하위 폴더 [Modeling_Results_v1_2026-10-21](https://drive.google.com/drive/folders/1vH9n9pCHnpDIzN68xmjlZQ7TgSUeBF9C)에 업로드 완료 (기존 파일과 이름 겹침 없음).
 
 로컬 전달 파일(위 새 Drive 폴더에 그대로 업로드):
 
