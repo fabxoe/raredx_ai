@@ -197,6 +197,10 @@ class GNNLinkPredictor(nn.Module):
             self.bilinear_weight = nn.Parameter(torch.empty(embedding_dim, embedding_dim))
 
         self._reset_parameters(torch.Generator().manual_seed(seed))
+        # Dropout during training draws Bernoulli masks from this model-owned
+        # generator (never the global RNG) so encode() stays reproducible from
+        # `seed` alone, matching the parameter-init RNG isolation above.
+        self._dropout_generator = torch.Generator().manual_seed(seed)
 
     def _reset_parameters(self, generator: torch.Generator) -> None:
         """Deterministically (re)initialize all parameters from `generator`."""
@@ -208,6 +212,14 @@ class GNNLinkPredictor(nn.Module):
                     nn.init.xavier_uniform_(param, generator=generator)
                 else:
                     nn.init.zeros_(param)
+
+    def _dropout(self, x: torch.Tensor) -> torch.Tensor:
+        """Inverted-dropout using the model-owned generator, never global RNG."""
+        if not self.training or self.DROPOUT == 0.0:
+            return x
+        keep_prob = 1 - self.DROPOUT
+        mask = torch.empty_like(x).bernoulli_(keep_prob, generator=self._dropout_generator)
+        return x * mask / keep_prob
 
     def encode(self, data: HeteroData) -> dict[str, torch.Tensor]:
         """Return `{"Disease": [num_disease, D], "Gene": [num_gene, D]}` embeddings."""
@@ -233,7 +245,7 @@ class GNNLinkPredictor(nn.Module):
             }
             if layer < len(self.convs) - 1:
                 x_dict = {
-                    node_type: F.dropout(x, p=self.DROPOUT, training=self.training)
+                    node_type: self._dropout(x)
                     for node_type, x in x_dict.items()
                 }
 

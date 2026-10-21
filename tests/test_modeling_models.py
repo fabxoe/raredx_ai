@@ -196,3 +196,18 @@ def test_gnn_does_not_touch_global_rng_state() -> None:
     after = torch.rand(3)
 
     assert torch.equal(before, after)
+
+
+def test_gnn_encode_in_train_mode_does_not_touch_global_rng_state() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    model = _build_gnn(package, seed=999)
+    model.train()
+
+    torch.manual_seed(123)
+    before = torch.rand(3)
+
+    torch.manual_seed(123)
+    model.encode(package.data)
+    after = torch.rand(3)
+
+    assert torch.equal(before, after)
