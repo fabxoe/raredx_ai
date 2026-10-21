@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
-from app.modeling.evaluate import RankingMetrics
+from app.modeling.evaluate import EvaluationReport, RankingMetrics
 from app.modeling.loader import load_graph_package
 from app.modeling.multi_seed import (
+    EVALUATION_REPORT_FIELDS,
+    EvaluationReportStats,
     aggregate_evaluation_reports,
     aggregate_ranking_metrics,
     run_baseline_multi_seed,
@@ -20,6 +23,15 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "modeling"
 
 def _metrics(mrr: float, count: int = 10) -> RankingMetrics:
     return RankingMetrics(hits_at_1=mrr, hits_at_10=mrr, hits_at_50=mrr, mrr=mrr, count=count)
+
+
+def test_evaluation_report_fields_derived_from_dataclass_not_hardcoded() -> None:
+    assert EVALUATION_REPORT_FIELDS == tuple(f.name for f in dataclasses.fields(EvaluationReport))
+
+
+def test_evaluation_report_stats_covers_the_same_fields_as_evaluation_report() -> None:
+    stats_fields = {f.name for f in dataclasses.fields(EvaluationReportStats)}
+    assert stats_fields == set(EVALUATION_REPORT_FIELDS)
 
 
 def test_aggregate_ranking_metrics_computes_mean_and_std() -> None:
@@ -81,6 +93,21 @@ def test_run_gnn_multi_seed_trains_once_per_seed() -> None:
     )
     assert set(run.validation_per_seed) == {1, 2}
     assert set(run.histories) == {1, 2}
+
+
+def test_run_baseline_multi_seed_calls_on_seed_done_once_per_seed_as_it_goes() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    calls: list[tuple[int, EvaluationReport, EvaluationReport]] = []
+
+    def on_seed_done(seed, model, validation_report, test_report, history) -> None:  # type: ignore[no-untyped-def]
+        calls.append((seed, validation_report, test_report))
+
+    run = run_baseline_multi_seed(
+        package, [1, 2, 3], epochs=3, patience=None, on_seed_done=on_seed_done
+    )
+    assert [c[0] for c in calls] == [1, 2, 3]
+    assert calls[0][1] is run.validation_per_seed[1]
+    assert calls[-1][2] is run.test_per_seed[3]
 
 
 def test_run_multi_seed_rejects_empty_seed_list() -> None:

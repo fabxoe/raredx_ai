@@ -34,7 +34,8 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
     )
     assert exit_code == 0
     report = json.loads(output.read_text())
-    assert set(report) == {"config", "training", "baseline", "gnn"}
+    assert set(report) == {"status", "config", "training", "baseline", "gnn"}
+    assert report["status"] == "complete"
     assert report["config"]["model_seeds"] == [1, 2]
     assert report["config"]["split_seed"] == 42
 
@@ -190,6 +191,57 @@ def test_cli_patience_zero_disables_early_stopping(tmp_path: Path) -> None:
         assert report["training"][model]["42"]["epochs_run"] == 4
 
 
+def test_cli_overwrite_removes_stale_checkpoints_from_a_different_seed_set(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    first = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--model-seeds",
+            "1,2",
+            "--epochs",
+            "2",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+        ]
+    )
+    assert first == 0
+    assert (model_dir / "baseline_state_dict_seed1.pt").is_file()
+    assert (model_dir / "gnn_state_dict_seed2.pt").is_file()
+
+    second = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--model-seeds",
+            "3,4",
+            "--epochs",
+            "2",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+            "--overwrite",
+        ]
+    )
+    assert second == 0
+
+    # Stale seed-1/seed-2 checkpoints from the first run are gone, not mixed in.
+    assert not (model_dir / "baseline_state_dict_seed1.pt").exists()
+    assert not (model_dir / "gnn_state_dict_seed2.pt").exists()
+    assert (model_dir / "baseline_state_dict_seed3.pt").is_file()
+    assert (model_dir / "gnn_state_dict_seed4.pt").is_file()
+
+
 def test_cli_refuses_to_overwrite_existing_outputs_without_flag(tmp_path: Path) -> None:
     output = tmp_path / "report.json"
     model_dir = tmp_path / "models"
@@ -221,6 +273,68 @@ def test_cli_rejects_empty_model_seeds() -> None:
                 str(FIXTURE_DIR),
                 "--model-seeds",
                 " , ",
+                "--epochs",
+                "2",
+            ]
+        )
+
+
+def test_cli_persists_completed_seeds_incrementally_if_a_later_seed_crashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.modeling.multi_seed as multi_seed_module
+
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    original_train_gnn = multi_seed_module.train_gnn
+    calls = {"count": 0}
+
+    def flaky_train_gnn(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("simulated crash on the second GNN seed")
+        return original_train_gnn(*args, **kwargs)
+
+    monkeypatch.setattr(multi_seed_module, "train_gnn", flaky_train_gnn)
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        main(
+            [
+                "--graph-dir",
+                str(FIXTURE_DIR),
+                "--seed",
+                "42",
+                "--model-seeds",
+                "1,2,3",
+                "--epochs",
+                "2",
+                "--output",
+                str(output),
+                "--model-dir",
+                str(model_dir),
+            ]
+        )
+
+    # Baseline (all 3 seeds) and the GNN's first seed finished before the crash;
+    # both are on disk even though main() never returned.
+    report = json.loads(output.read_text())
+    assert report["status"] == "in_progress"
+    assert set(report["baseline"]["validation"]["per_seed"]) == {"1", "2", "3"}
+    assert set(report["gnn"]["validation"]["per_seed"]) == {"1"}
+    for seed in (1, 2, 3):
+        assert (model_dir / f"baseline_state_dict_seed{seed}.pt").is_file()
+    assert (model_dir / "gnn_state_dict_seed1.pt").is_file()
+    assert not (model_dir / "gnn_state_dict_seed2.pt").exists()
+
+
+def test_cli_rejects_duplicate_model_seeds() -> None:
+    with pytest.raises(ValueError, match="duplicate seed"):
+        main(
+            [
+                "--graph-dir",
+                str(FIXTURE_DIR),
+                "--model-seeds",
+                "1,1,2",
                 "--epochs",
                 "2",
             ]

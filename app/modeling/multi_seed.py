@@ -8,6 +8,7 @@ and report results, instead of a one-off diagnostic script.
 
 from __future__ import annotations
 
+import dataclasses
 import statistics
 from dataclasses import dataclass, field
 from typing import Callable
@@ -19,15 +20,10 @@ from app.modeling.loader import GraphPackage
 from app.modeling.scoring import baseline_score_pair, gnn_score_pair
 from app.modeling.train import TrainingHistory, train_baseline, train_gnn
 
-EVALUATION_REPORT_FIELDS: tuple[str, ...] = (
-    "gene_corruption",
-    "disease_corruption",
-    "combined",
-    "cold_start_gene_corruption",
-    "cold_start_disease_corruption",
-    "all_gene_corruption",
-    "all_disease_corruption",
-    "all_combined",
+# Derived, not hand-copied, so a future field added/renamed on EvaluationReport
+# can't silently drift out of sync with what aggregate_evaluation_reports covers.
+EVALUATION_REPORT_FIELDS: tuple[str, ...] = tuple(
+    f.name for f in dataclasses.fields(EvaluationReport)
 )
 
 
@@ -116,12 +112,24 @@ def aggregate_evaluation_reports(reports: list[EvaluationReport]) -> EvaluationR
     )
 
 
+SeedCallback = Callable[[int, nn.Module, EvaluationReport, EvaluationReport, TrainingHistory], None]
+
+
 def _run_seeds(
     package: GraphPackage,
     seeds: list[int],
     train_fn: Callable[[GraphPackage, int], tuple[nn.Module, TrainingHistory]],
     score_pair_fn: Callable[[nn.Module, GraphPackage], Callable],
+    on_seed_done: SeedCallback | None = None,
 ) -> MultiSeedRun:
+    """Train+evaluate each seed in turn, calling `on_seed_done` right after each one.
+
+    `on_seed_done(seed, model, validation_report, test_report, history)` runs before
+    the next seed starts, so a caller can persist a model/report incrementally (see
+    `scripts/train_dg_link_model.py`) -- without it, a crash partway through a long
+    multi-seed run (the whole point of this module) would lose every already-
+    completed seed's training, not just the one in progress.
+    """
     if not seeds:
         raise ValueError("seeds must be a non-empty list")
     validation_per_seed: dict[int, EvaluationReport] = {}
@@ -135,6 +143,10 @@ def _run_seeds(
         scorer = score_pair_fn(model, package)
         validation_per_seed[seed] = evaluate_link_prediction(scorer, package, "validation")
         test_per_seed[seed] = evaluate_link_prediction(scorer, package, "test")
+        if on_seed_done is not None:
+            on_seed_done(
+                seed, model, validation_per_seed[seed], test_per_seed[seed], history
+            )
     return MultiSeedRun(
         validation_per_seed=validation_per_seed,
         test_per_seed=test_per_seed,
@@ -153,6 +165,7 @@ def run_baseline_multi_seed(
     lr: float = 0.01,
     weight_decay: float = 1e-4,
     patience: int | None = 20,
+    on_seed_done: SeedCallback | None = None,
 ) -> MultiSeedRun:
     """Train+evaluate `BaselineScorer` once per seed in `seeds`, same graph split."""
 
@@ -161,7 +174,7 @@ def run_baseline_multi_seed(
             pkg, epochs=epochs, lr=lr, weight_decay=weight_decay, seed=seed, patience=patience
         )
 
-    return _run_seeds(package, seeds, train_fn, baseline_score_pair)
+    return _run_seeds(package, seeds, train_fn, baseline_score_pair, on_seed_done)
 
 
 def run_gnn_multi_seed(
@@ -174,6 +187,7 @@ def run_gnn_multi_seed(
     hidden_dim: int = 64,
     embedding_dim: int = 64,
     patience: int | None = 20,
+    on_seed_done: SeedCallback | None = None,
 ) -> MultiSeedRun:
     """Train+evaluate `GNNLinkPredictor` once per seed in `seeds`, same graph split."""
 
@@ -189,4 +203,4 @@ def run_gnn_multi_seed(
             patience=patience,
         )
 
-    return _run_seeds(package, seeds, train_fn, gnn_score_pair)
+    return _run_seeds(package, seeds, train_fn, gnn_score_pair, on_seed_done)

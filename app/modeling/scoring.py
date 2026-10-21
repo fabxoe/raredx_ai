@@ -15,9 +15,14 @@ Pair = tuple[str, str]
 ScorePairFn = Callable[[list[Pair]], list[float]]
 
 
-def _pairs_to_index_tensors(
+def pairs_to_index_tensors(
     pairs: list[Pair], disease_index: dict[str, int], gene_index: dict[str, int]
 ) -> tuple[torch.LongTensor, torch.LongTensor]:
+    """Convert (disease_id, gene_id) pairs to parallel LongTensors of positions.
+
+    Shared by this module's adapters and `app/modeling/train.py`'s batch building
+    so the two don't carry independent, driftable copies of the same conversion.
+    """
     disease_idx = torch.tensor(
         [disease_index[disease_id] for disease_id, _gene_id in pairs], dtype=torch.long
     )
@@ -35,7 +40,7 @@ def baseline_score_pair(model: BaselineScorer, package: GraphPackage) -> ScorePa
     model.eval()
 
     def score_pair(pairs: list[Pair]) -> list[float]:
-        disease_idx, gene_idx = _pairs_to_index_tensors(pairs, disease_index, gene_index)
+        disease_idx, gene_idx = pairs_to_index_tensors(pairs, disease_index, gene_index)
         with torch.no_grad():
             logits = model(disease_idx, gene_idx)
         return logits.tolist()
@@ -60,7 +65,7 @@ def gnn_score_pair(model: GNNLinkPredictor, package: GraphPackage) -> ScorePairF
     gene_emb = embeddings["Gene"]
 
     def score_pair(pairs: list[Pair]) -> list[float]:
-        disease_idx, gene_idx = _pairs_to_index_tensors(pairs, disease_index, gene_index)
+        disease_idx, gene_idx = pairs_to_index_tensors(pairs, disease_index, gene_index)
         with torch.no_grad():
             logits = model.decode(disease_emb, gene_emb, disease_idx, gene_idx)
         return logits.tolist()
