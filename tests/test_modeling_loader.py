@@ -10,6 +10,7 @@ import torch
 from app.modeling.loader import (
     build_hetero_data,
     build_node_index,
+    load_graph_package,
     load_message_edge_csv,
     load_negative_pairs_csv,
     load_node_csv,
@@ -100,3 +101,13 @@ def test_build_hetero_data_excludes_test_split_pairs() -> None:
         (e["source_id"], e["target_id"]) for e in edges if e["relation"] == "ASSOCIATED_WITH"
     }
     assert not (message_pairs & test_pairs)
+
+
+def test_load_graph_package_end_to_end_from_fixtures() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    assert set(package.positives) == {"train", "validation", "test"}
+    assert len(package.negatives["train"]) == len(package.positives["train"])
+    assert ("Disease", "ASSOCIATED_WITH", "Gene") in package.data.edge_types
+    train_pairs = set(package.positives["train"])
+    val_test_pairs = set(package.positives["validation"]) | set(package.positives["test"])
+    assert not (train_pairs & val_test_pairs)

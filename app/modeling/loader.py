@@ -220,3 +220,70 @@ def build_hetero_data(
         data[target_type, f"rev_{relation}", source_type].edge_index = reverse_edge_index
 
     return data
+
+
+@dataclass
+class GraphPackage:
+    """Complete graph package with data, node indexes, and train/validation/test splits."""
+
+    data: HeteroData
+    node_indexes: dict[str, NodeIndex]
+    positives: dict[str, list[tuple[str, str]]]
+    negatives: dict[str, list[tuple[str, str]]]
+
+
+def load_graph_package(graph_dir: Path, *, seed: int = 42) -> GraphPackage:
+    """Load a complete graph package from a CSV directory structure.
+
+    Reads:
+    - gene_nodes.csv, disease_nodes.csv, hpo_nodes.csv
+    - training_message_edges.csv
+    - splits/train.csv, splits/validation.csv, splits/test.csv
+    - negative_pairs.csv
+
+    Returns a GraphPackage with HeteroData, node indexes, and positive/negative pairs
+    split by train/validation/test.
+
+    Args:
+        graph_dir: Directory containing all the CSV files.
+        seed: Random seed for splitting negatives (default 42).
+
+    Returns:
+        GraphPackage with composed data, node_indexes, positives, and negatives.
+    """
+    graph_dir = Path(graph_dir)
+
+    # Load nodes
+    genes = build_node_index(load_node_csv(graph_dir / "gene_nodes.csv"))
+    diseases = build_node_index(load_node_csv(graph_dir / "disease_nodes.csv"))
+    phenotypes = build_node_index(load_node_csv(graph_dir / "hpo_nodes.csv"))
+    node_indexes = {"Gene": genes, "Disease": diseases, "Phenotype": phenotypes}
+
+    # Load message edges
+    message_edges = load_message_edge_csv(graph_dir / "training_message_edges.csv")
+
+    # Load positive pairs from splits
+    positives = {
+        "train": load_pair_csv(graph_dir / "splits/train.csv"),
+        "validation": load_pair_csv(graph_dir / "splits/validation.csv"),
+        "test": load_pair_csv(graph_dir / "splits/test.csv"),
+    }
+
+    # Load and split negative pairs
+    all_negatives = load_negative_pairs_csv(graph_dir / "negative_pairs.csv")
+    split_sizes = {
+        "train": len(positives["train"]),
+        "validation": len(positives["validation"]),
+        "test": len(positives["test"]),
+    }
+    negatives = split_negative_pairs(all_negatives, split_sizes=split_sizes, seed=seed)
+
+    # Build HeteroData
+    data = build_hetero_data(node_indexes, message_edges)
+
+    return GraphPackage(
+        data=data,
+        node_indexes=node_indexes,
+        positives=positives,
+        negatives=negatives,
+    )
