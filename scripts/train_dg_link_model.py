@@ -108,7 +108,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--graph-dir", type=Path, default=Path("data/processed/graph"))
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=150,
+        help="epoch budget; with --patience set (the default), training usually stops earlier",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=15,
+        help=(
+            "stop training after this many epochs with no new best validation loss, and "
+            "restore the best epoch's weights; pass 0 to disable early stopping and always "
+            "train for the full --epochs, returning the final epoch's weights"
+        ),
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=1e-4,
+        help="Adam L2 penalty for both models; pass 0 to disable",
+    )
     parser.add_argument(
         "--output", type=Path, default=Path("reports/dg_link_prediction_report.json")
     )
@@ -119,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         help="allow overwriting an existing report or checkpoint at the output paths",
     )
     args = parser.parse_args(argv)
+    patience = None if args.patience <= 0 else args.patience
 
     baseline_checkpoint = args.model_dir / "baseline_state_dict.pt"
     gnn_checkpoint = args.model_dir / "gnn_state_dict.pt"
@@ -128,15 +150,37 @@ def main(argv: list[str] | None = None) -> int:
 
     package = load_graph_package(args.graph_dir, seed=args.seed)
 
-    baseline_model, _baseline_history = train_baseline(
-        package, epochs=args.epochs, seed=args.seed
+    baseline_model, baseline_history = train_baseline(
+        package,
+        epochs=args.epochs,
+        seed=args.seed,
+        patience=patience,
+        weight_decay=args.weight_decay,
     )
-    gnn_model, _gnn_history = train_gnn(package, epochs=args.epochs, seed=args.seed)
+    gnn_model, gnn_history = train_gnn(
+        package,
+        epochs=args.epochs,
+        seed=args.seed,
+        patience=patience,
+        weight_decay=args.weight_decay,
+    )
 
     baseline_score_pair = _baseline_score_pair(baseline_model, package)
     gnn_score_pair = _gnn_score_pair(gnn_model, package)
 
     report = {
+        "training": {
+            "baseline": {
+                "epochs_run": len(baseline_history.train_loss),
+                "best_epoch": baseline_history.best_epoch,
+                "best_validation_loss": min(baseline_history.validation_loss),
+            },
+            "gnn": {
+                "epochs_run": len(gnn_history.train_loss),
+                "best_epoch": gnn_history.best_epoch,
+                "best_validation_loss": min(gnn_history.validation_loss),
+            },
+        },
         "baseline": {
             "validation": _report_to_dict(
                 evaluate_link_prediction(baseline_score_pair, package, "validation")

@@ -32,7 +32,12 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
     )
     assert exit_code == 0
     report = json.loads(output.read_text())
-    assert set(report) == {"baseline", "gnn"}
+    assert set(report) == {"training", "baseline", "gnn"}
+    assert set(report["training"]) == {"baseline", "gnn"}
+    for model in ("baseline", "gnn"):
+        training = report["training"][model]
+        assert training["epochs_run"] == 3
+        assert 1 <= training["best_epoch"] <= 3
     assert set(report["baseline"]) == {"validation", "test"}
     assert set(report["gnn"]) == {"validation", "test"}
     assert "hits_at_1" in report["baseline"]["test"]["combined"]
@@ -96,6 +101,58 @@ def test_cli_saves_loadable_model_checkpoints(tmp_path: Path) -> None:
     gnn_state = torch.load(gnn_checkpoint, weights_only=True)
     assert "gene_prior" in baseline_state
     assert any(key.startswith("bilinear_weight") for key in gnn_state)
+
+
+def test_cli_patience_stops_training_before_the_full_epoch_budget(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    exit_code = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--epochs",
+            "200",
+            "--patience",
+            "3",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+        ]
+    )
+    assert exit_code == 0
+    report = json.loads(output.read_text())
+    for model in ("baseline", "gnn"):
+        training = report["training"][model]
+        assert training["epochs_run"] < 200
+        assert training["epochs_run"] == training["best_epoch"] + 3
+
+
+def test_cli_patience_zero_disables_early_stopping(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    exit_code = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--epochs",
+            "4",
+            "--patience",
+            "0",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+        ]
+    )
+    assert exit_code == 0
+    report = json.loads(output.read_text())
+    for model in ("baseline", "gnn"):
+        assert report["training"][model]["epochs_run"] == 4
 
 
 def test_cli_refuses_to_overwrite_existing_outputs_without_flag(tmp_path: Path) -> None:

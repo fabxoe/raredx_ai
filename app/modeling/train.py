@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import torch
@@ -14,10 +15,38 @@ from app.modeling.models import BaselineScorer, GNNLinkPredictor, compute_gene_p
 
 @dataclass
 class TrainingHistory:
-    """Per-epoch train/validation loss values."""
+    """Per-epoch train/validation loss values.
+
+    `best_epoch` is the 1-indexed epoch with the lowest `validation_loss`, tracked
+    regardless of `patience`. It only affects which weights the training function
+    returns when `patience` is set (see `train_baseline`/`train_gnn`).
+    """
 
     train_loss: list[float] = field(default_factory=list)
     validation_loss: list[float] = field(default_factory=list)
+    best_epoch: int = 0
+
+
+class _BestCheckpoint:
+    """Tracks the lowest validation loss seen and a copy of the model's weights then."""
+
+    def __init__(self) -> None:
+        self.loss = float("inf")
+        self.epoch = 0
+        self.state_dict: dict[str, torch.Tensor] | None = None
+        self.epochs_since_improvement = 0
+
+    def update(self, model: nn.Module, epoch: int, val_loss: float) -> None:
+        if val_loss < self.loss:
+            self.loss = val_loss
+            self.epoch = epoch
+            self.state_dict = copy.deepcopy(model.state_dict())
+            self.epochs_since_improvement = 0
+        else:
+            self.epochs_since_improvement += 1
+
+    def should_stop(self, patience: int | None) -> bool:
+        return patience is not None and self.epochs_since_improvement >= patience
 
 
 def _pairs_to_index_tensors(
@@ -61,9 +90,23 @@ def train_baseline(
     *,
     epochs: int = 50,
     lr: float = 0.01,
+    weight_decay: float = 0.0,
     seed: int = 42,
+    patience: int | None = None,
 ) -> tuple[BaselineScorer, TrainingHistory]:
-    """Train `BaselineScorer` on `package`'s train split, tracking validation loss too."""
+    """Train `BaselineScorer` on `package`'s train split, tracking validation loss too.
+
+    `history.best_epoch` (the 1-indexed epoch with the lowest validation loss) is
+    always recorded. If `patience` is given, training stops once that many
+    consecutive epochs pass with no new best validation loss, and the returned
+    model's weights are rolled back to that best epoch rather than the last one.
+    With `patience=None` (the default), training always runs the full `epochs` and
+    returns the final epoch's weights, unchanged from prior behavior.
+
+    `weight_decay` adds L2 regularization via Adam's own `weight_decay` argument —
+    train positives are far fewer than the model's parameters, so some penalty
+    helps curb the fast overfitting seen on this dataset (default 0.0 = off).
+    """
     torch.manual_seed(seed)
 
     disease_ids = package.node_indexes["Disease"].ids
@@ -75,12 +118,13 @@ def train_baseline(
     train_disease_idx, train_gene_idx, train_labels = _build_pair_batch(package, "train")
     val_disease_idx, val_gene_idx, val_labels = _build_pair_batch(package, "validation")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.BCEWithLogitsLoss()
 
     history = TrainingHistory()
+    checkpoint = _BestCheckpoint()
 
-    for _epoch in range(epochs):
+    for epoch in range(epochs):
         model.train()
         optimizer.zero_grad()
         train_logits = model(train_disease_idx, train_gene_idx)
@@ -94,6 +138,14 @@ def train_baseline(
             val_logits = model(val_disease_idx, val_gene_idx)
             val_loss = loss_fn(val_logits, val_labels)
         history.validation_loss.append(val_loss.item())
+
+        checkpoint.update(model, epoch + 1, val_loss.item())
+        if checkpoint.should_stop(patience):
+            break
+
+    history.best_epoch = checkpoint.epoch
+    if patience is not None and checkpoint.state_dict is not None:
+        model.load_state_dict(checkpoint.state_dict)
 
     return model, history
 
@@ -221,10 +273,12 @@ def train_gnn(
     *,
     epochs: int = 50,
     lr: float = 0.01,
-    hidden_dim: int = 64,
-    embedding_dim: int = 64,
+    weight_decay: float = 0.0,
+    hidden_dim: int = 32,
+    embedding_dim: int = 32,
     seed: int = 42,
     supervision_ratio: float = DEFAULT_SUPERVISION_RATIO,
+    patience: int | None = None,
 ) -> tuple[GNNLinkPredictor, TrainingHistory]:
     """Train `GNNLinkPredictor` on `package`'s train split, tracking validation loss too.
 
@@ -234,6 +288,18 @@ def train_gnn(
     positive by detecting its own edge in the encoded graph. Validation loss (and
     downstream evaluation) encodes the FULL train message graph, the correct
     transductive setup since val/test positives were never in it.
+
+    `history.best_epoch` (the 1-indexed epoch with the lowest validation loss) is
+    always recorded. If `patience` is given, training stops once that many
+    consecutive epochs pass with no new best validation loss, and the returned
+    model's weights are rolled back to that best epoch rather than the last one.
+    With `patience=None` (the default), training always runs the full `epochs` and
+    returns the final epoch's weights, unchanged from prior behavior.
+
+    `weight_decay` adds L2 regularization via Adam's own `weight_decay` argument.
+    `hidden_dim`/`embedding_dim` default to 32 (down from an earlier 64): with only
+    6,673 train positives, a 64-dim model has far more parameters than the data can
+    support, which is most of why it overfits within ~20-40 epochs on this dataset.
     """
     torch.manual_seed(seed)
     split_generator = torch.Generator().manual_seed(seed)
@@ -251,12 +317,13 @@ def train_gnn(
 
     val_disease_idx, val_gene_idx, val_labels = _build_pair_batch(package, "validation")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.BCEWithLogitsLoss()
 
     history = TrainingHistory()
+    checkpoint = _BestCheckpoint()
 
-    for _epoch in range(epochs):
+    for epoch in range(epochs):
         batch = build_gnn_epoch_batch(
             package, supervision_ratio=supervision_ratio, generator=split_generator
         )
@@ -279,5 +346,13 @@ def train_gnn(
             )
             val_loss = loss_fn(val_logits, val_labels)
         history.validation_loss.append(val_loss.item())
+
+        checkpoint.update(model, epoch + 1, val_loss.item())
+        if checkpoint.should_stop(patience):
+            break
+
+    history.best_epoch = checkpoint.epoch
+    if patience is not None and checkpoint.state_dict is not None:
+        model.load_state_dict(checkpoint.state_dict)
 
     return model, history

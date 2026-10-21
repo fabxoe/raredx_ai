@@ -43,6 +43,68 @@ def test_train_baseline_records_validation_loss_without_backprop() -> None:
     assert len(history.train_loss) == 5
 
 
+def test_train_baseline_without_patience_runs_full_epochs_and_tracks_best_epoch() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    _, history = train_baseline(package, epochs=20, seed=42)
+    assert len(history.train_loss) == 20
+    assert 1 <= history.best_epoch <= 20
+    assert history.validation_loss[history.best_epoch - 1] == min(history.validation_loss)
+
+
+def test_train_baseline_with_patience_stops_early_and_restores_best_weights() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    model, history = train_baseline(package, epochs=200, seed=42, patience=5)
+    # Validation loss on this tiny fixture overfits quickly, so patience should
+    # trigger well before the full epoch budget.
+    assert len(history.train_loss) < 200
+    assert len(history.train_loss) == history.best_epoch + 5
+    assert history.validation_loss[history.best_epoch - 1] == min(history.validation_loss)
+
+    # The restored model's validation loss matches the recorded best, not the
+    # loss from the last (post-patience) epoch trained.
+    disease_index = package.node_indexes["Disease"].index
+    gene_index = package.node_indexes["Gene"].index
+    val_pairs = package.positives["validation"] + package.negatives["validation"]
+    disease_idx = torch.tensor([disease_index[d] for d, _g in val_pairs], dtype=torch.long)
+    gene_idx = torch.tensor([gene_index[g] for _d, g in val_pairs], dtype=torch.long)
+    labels = torch.cat(
+        [
+            torch.ones(len(package.positives["validation"])),
+            torch.zeros(len(package.negatives["validation"])),
+        ]
+    )
+    model.eval()
+    with torch.no_grad():
+        logits = model(disease_idx, gene_idx)
+    restored_loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, labels).item()
+    assert restored_loss == pytest.approx(min(history.validation_loss), abs=1e-5)
+
+
+def test_train_baseline_weight_decay_shrinks_bilinear_weight() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    plain, _ = train_baseline(package, epochs=20, seed=42, weight_decay=0.0)
+    decayed, _ = train_baseline(package, epochs=20, seed=42, weight_decay=1.0)
+    assert decayed.bilinear_weight.norm().item() < plain.bilinear_weight.norm().item()
+
+
+def test_train_gnn_default_dims_are_32() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    model, _ = train_gnn(package, epochs=1, seed=42)
+    assert model.hidden_dim == 32
+    assert model.embedding_dim == 32
+
+
+def test_train_gnn_weight_decay_shrinks_bilinear_weight() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    plain, _ = train_gnn(
+        package, epochs=20, hidden_dim=8, embedding_dim=8, seed=42, weight_decay=0.0
+    )
+    decayed, _ = train_gnn(
+        package, epochs=20, hidden_dim=8, embedding_dim=8, seed=42, weight_decay=1.0
+    )
+    assert decayed.bilinear_weight.norm().item() < plain.bilinear_weight.norm().item()
+
+
 def test_train_gnn_reduces_loss_on_fixture_graph() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     _, history = train_gnn(package, epochs=30, hidden_dim=8, embedding_dim=8, seed=42)
@@ -64,6 +126,24 @@ def test_train_gnn_records_validation_loss_without_backprop() -> None:
     _, history = train_gnn(package, epochs=5, hidden_dim=8, embedding_dim=8, seed=42)
     assert len(history.validation_loss) == 5
     assert len(history.train_loss) == 5
+
+
+def test_train_gnn_without_patience_runs_full_epochs_and_tracks_best_epoch() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    _, history = train_gnn(package, epochs=15, hidden_dim=8, embedding_dim=8, seed=42)
+    assert len(history.train_loss) == 15
+    assert 1 <= history.best_epoch <= 15
+    assert history.validation_loss[history.best_epoch - 1] == min(history.validation_loss)
+
+
+def test_train_gnn_with_patience_stops_early_and_restores_best_weights() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    _, history = train_gnn(
+        package, epochs=100, hidden_dim=8, embedding_dim=8, seed=42, patience=5
+    )
+    assert len(history.train_loss) < 100
+    assert len(history.train_loss) == history.best_epoch + 5
+    assert history.validation_loss[history.best_epoch - 1] == min(history.validation_loss)
 
 
 # --- edge-level held-out supervision (GNN train-target leakage guard) --------
