@@ -1,9 +1,18 @@
-"""No-graph baseline model: gene prior + bilinear disease/gene scorer."""
+"""Disease-gene link prediction models.
+
+- `BaselineScorer`: no-graph baseline (gene prior + bilinear disease/gene scorer).
+- `GNNLinkPredictor`: 2-layer heterogeneous GNN encoder + bilinear decoder.
+"""
 
 from __future__ import annotations
 
 import torch
 from torch import nn
+from torch.nn import functional as F
+from torch_geometric.data import HeteroData
+from torch_geometric.nn import HeteroConv, SAGEConv
+
+EdgeType = tuple[str, str, str]
 
 
 def compute_gene_prior(
@@ -97,3 +106,153 @@ class BaselineScorer(nn.Module):
         gene_prior_logit = self.gene_prior[gene_idx]
 
         return gene_prior_logit + bilinear_term
+
+
+class GNNLinkPredictor(nn.Module):
+    """Two-layer heterogeneous GNN encoder with a bilinear disease/gene decoder.
+
+    Encoder:
+        learned per-node input embedding (per node type, hidden_dim)
+        -> HeteroConv(layer 1) -> ReLU -> dropout
+        -> HeteroConv(layer 2) -> ReLU
+        -> per-type linear projection to embedding_dim (Disease, Gene only)
+
+    Each HeteroConv holds one relation-specific conv per edge type in
+    `metadata` -- forward relations AND their `rev_*` mirrors -- and sums the
+    per-relation messages arriving at each destination node type.
+
+    Conv choice: `SAGEConv` with mean neighbor aggregation per relation.
+    - Its separate root (self) weight preserves a node's own embedding, so
+      nodes with no incoming edges of a relation (e.g. a gene with no train
+      association) still get a well-defined, non-degenerate representation.
+    - Mean aggregation normalizes away the heavy degree skew of hub genes /
+      broad phenotypes, unlike GraphConv's sum aggregation.
+    - It is cheap and deterministic on CPU, unlike attention (GATConv), which
+      adds parameters and variance that a small labeled set cannot support.
+
+    The graph has no node features, so input features are learned per-node
+    embeddings (transductive). That requires node counts per type, which
+    `HeteroData.metadata()` does not carry -- hence the `num_nodes` argument.
+
+    `decode` has the same shape contract as `BaselineScorer.forward`: one logit
+    per (disease_idx[i], gene_idx[i]) pair, as a 1-D tensor.
+    """
+
+    DROPOUT: float = 0.1
+    OUTPUT_NODE_TYPES: tuple[str, str] = ("Disease", "Gene")
+
+    def __init__(
+        self,
+        metadata: tuple[list[str], list[EdgeType]],
+        *,
+        num_nodes: dict[str, int],
+        hidden_dim: int = 64,
+        embedding_dim: int = 64,
+        seed: int = 42,
+    ) -> None:
+        super().__init__()
+
+        node_types, edge_types = metadata
+        self.node_types: list[str] = list(node_types)
+        self.edge_types: list[EdgeType] = [tuple(edge_type) for edge_type in edge_types]
+        self.hidden_dim = hidden_dim
+        self.embedding_dim = embedding_dim
+
+        for node_type in self.OUTPUT_NODE_TYPES:
+            if node_type not in self.node_types:
+                raise ValueError(f"metadata is missing required node type {node_type!r}")
+        missing_counts = [t for t in self.node_types if t not in num_nodes]
+        if missing_counts:
+            raise ValueError(f"num_nodes is missing node types: {missing_counts}")
+
+        # PyG/torch layers initialize themselves from the global RNG on
+        # construction. Build them inside fork_rng so global state is restored
+        # afterwards, then re-initialize every parameter from a local generator
+        # so the model depends only on `seed`.
+        with torch.random.fork_rng(devices=[]):
+            self.input_embeddings = nn.ModuleDict(
+                {
+                    node_type: nn.Embedding(num_nodes[node_type], hidden_dim)
+                    for node_type in self.node_types
+                }
+            )
+            self.convs = nn.ModuleList(
+                [
+                    HeteroConv(
+                        {
+                            edge_type: SAGEConv((hidden_dim, hidden_dim), hidden_dim)
+                            for edge_type in self.edge_types
+                        },
+                        aggr="sum",
+                    )
+                    for _ in range(2)
+                ]
+            )
+            self.projections = nn.ModuleDict(
+                {
+                    node_type: nn.Linear(hidden_dim, embedding_dim)
+                    for node_type in self.OUTPUT_NODE_TYPES
+                }
+            )
+            self.bilinear_weight = nn.Parameter(torch.empty(embedding_dim, embedding_dim))
+
+        self._reset_parameters(torch.Generator().manual_seed(seed))
+
+    def _reset_parameters(self, generator: torch.Generator) -> None:
+        """Deterministically (re)initialize all parameters from `generator`."""
+        with torch.no_grad():
+            for name, param in self.named_parameters():
+                if name.startswith("input_embeddings."):
+                    nn.init.normal_(param, generator=generator)
+                elif param.dim() >= 2:
+                    nn.init.xavier_uniform_(param, generator=generator)
+                else:
+                    nn.init.zeros_(param)
+
+    def encode(self, data: HeteroData) -> dict[str, torch.Tensor]:
+        """Return `{"Disease": [num_disease, D], "Gene": [num_gene, D]}` embeddings."""
+        x_dict: dict[str, torch.Tensor] = {}
+        for node_type in self.node_types:
+            embedding = self.input_embeddings[node_type]
+            expected = data[node_type].num_nodes
+            if expected != embedding.num_embeddings:
+                raise ValueError(
+                    f"{node_type}: data has {expected} nodes but model was built for "
+                    f"{embedding.num_embeddings}"
+                )
+            x_dict[node_type] = embedding.weight
+
+        edge_index_dict = data.edge_index_dict
+        for layer, conv in enumerate(self.convs):
+            out_dict = conv(x_dict, edge_index_dict)
+            # A node type receiving no edges this layer is absent from
+            # out_dict; carry its previous representation forward.
+            x_dict = {
+                node_type: F.relu(out_dict.get(node_type, x))
+                for node_type, x in x_dict.items()
+            }
+            if layer < len(self.convs) - 1:
+                x_dict = {
+                    node_type: F.dropout(x, p=self.DROPOUT, training=self.training)
+                    for node_type, x in x_dict.items()
+                }
+
+        return {
+            node_type: self.projections[node_type](x_dict[node_type])
+            for node_type in self.OUTPUT_NODE_TYPES
+        }
+
+    def decode(
+        self,
+        disease_emb: torch.Tensor,
+        gene_emb: torch.Tensor,
+        disease_idx: torch.LongTensor,
+        gene_idx: torch.LongTensor,
+    ) -> torch.Tensor:
+        """Return a 1-D logit tensor, one per (disease, gene) input pair."""
+        return torch.einsum(
+            "bi,ij,bj->b",
+            disease_emb[disease_idx],
+            self.bilinear_weight,
+            gene_emb[gene_idx],
+        )
