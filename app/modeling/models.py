@@ -10,9 +10,14 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch_geometric.data import HeteroData
-from torch_geometric.nn import HeteroConv, SAGEConv
+from torch_geometric.nn import GraphConv, HeteroConv, SAGEConv
 
 EdgeType = tuple[str, str, str]
+
+# Relations that carry a learned `edge_weight` (see app/modeling/edge_weights.py)
+# when `GNNLinkPredictor(..., use_edge_weights=True)`. SAGEConv has no edge_weight
+# support, so these two use GraphConv instead; every other relation keeps SAGEConv.
+WEIGHTED_RELATIONS: frozenset[str] = frozenset({"ASSOCIATED_WITH", "rev_ASSOCIATED_WITH"})
 
 
 def compute_gene_prior(
@@ -133,6 +138,13 @@ class GNNLinkPredictor(nn.Module):
     - It is cheap and deterministic on CPU, unlike attention (GATConv), which
       adds parameters and variance that a small labeled set cannot support.
 
+    `use_edge_weights=True` (default off) switches `ASSOCIATED_WITH`/
+    `rev_ASSOCIATED_WITH` specifically from `SAGEConv` to `GraphConv`, which
+    accepts an `edge_weight` -- SAGEConv has no such support. `encode(data)`
+    only forwards `edge_weight` for those two relations (and only when `data`
+    actually carries one, e.g. via `app/modeling/edge_weights.py`); every other
+    relation stays on plain unweighted `SAGEConv`, unchanged.
+
     The graph has no node features, so input features are learned per-node
     embeddings (transductive). That requires node counts per type, which
     `HeteroData.metadata()` does not carry -- hence the `num_nodes` argument.
@@ -152,6 +164,7 @@ class GNNLinkPredictor(nn.Module):
         hidden_dim: int = 64,
         embedding_dim: int = 64,
         seed: int = 42,
+        use_edge_weights: bool = False,
     ) -> None:
         super().__init__()
 
@@ -160,6 +173,7 @@ class GNNLinkPredictor(nn.Module):
         self.edge_types: list[EdgeType] = [tuple(edge_type) for edge_type in edge_types]
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
+        self.use_edge_weights = use_edge_weights
 
         for node_type in self.OUTPUT_NODE_TYPES:
             if node_type not in self.node_types:
@@ -179,13 +193,16 @@ class GNNLinkPredictor(nn.Module):
                     for node_type in self.node_types
                 }
             )
+            def _conv_for(edge_type: EdgeType) -> nn.Module:
+                relation = edge_type[1]
+                if use_edge_weights and relation in WEIGHTED_RELATIONS:
+                    return GraphConv((hidden_dim, hidden_dim), hidden_dim)
+                return SAGEConv((hidden_dim, hidden_dim), hidden_dim)
+
             self.convs = nn.ModuleList(
                 [
                     HeteroConv(
-                        {
-                            edge_type: SAGEConv((hidden_dim, hidden_dim), hidden_dim)
-                            for edge_type in self.edge_types
-                        },
+                        {edge_type: _conv_for(edge_type) for edge_type in self.edge_types},
                         aggr="sum",
                     )
                     for _ in range(2)
@@ -241,8 +258,17 @@ class GNNLinkPredictor(nn.Module):
             x_dict[node_type] = embedding.weight
 
         edge_index_dict = data.edge_index_dict
+        edge_weight_dict: dict[EdgeType, torch.Tensor] = {}
+        if self.use_edge_weights:
+            for edge_type in self.edge_types:
+                if edge_type[1] not in WEIGHTED_RELATIONS:
+                    continue
+                weight = getattr(data[edge_type], "edge_weight", None)
+                if weight is not None:
+                    edge_weight_dict[edge_type] = weight
+
         for layer, conv in enumerate(self.convs):
-            out_dict = conv(x_dict, edge_index_dict)
+            out_dict = conv(x_dict, edge_index_dict, edge_weight_dict=edge_weight_dict)
             # A node type receiving no edges this layer is absent from
             # out_dict; carry its previous representation forward.
             x_dict = {

@@ -182,7 +182,9 @@ def remove_dg_edges(
     Removes each pair's forward ``(Disease, ASSOCIATED_WITH, Gene)`` edge AND its
     mirrored ``(Gene, rev_ASSOCIATED_WITH, Disease)`` edge. ``data`` itself is not
     modified. Edge types are kept even if they become empty, so the model's
-    metadata still matches.
+    metadata still matches. If either edge type carries an ``edge_weight``
+    (see ``app/modeling/edge_weights.py``), it is filtered by the same mask as
+    ``edge_index`` so the two stay aligned.
     """
     result = data.clone()
     if not pairs or DG_EDGE_TYPE not in data.edge_types:
@@ -196,15 +198,19 @@ def remove_dg_edges(
     )
 
     forward = data[DG_EDGE_TYPE].edge_index
-    forward_keys = forward[0] * num_genes + forward[1]
-    result[DG_EDGE_TYPE].edge_index = forward[:, ~torch.isin(forward_keys, removed_keys)]
+    forward_keep = ~torch.isin(forward[0] * num_genes + forward[1], removed_keys)
+    result[DG_EDGE_TYPE].edge_index = forward[:, forward_keep]
+    forward_weight = getattr(data[DG_EDGE_TYPE], "edge_weight", None)
+    if forward_weight is not None:
+        result[DG_EDGE_TYPE].edge_weight = forward_weight[forward_keep]
 
     if DG_REVERSE_EDGE_TYPE in data.edge_types:
         reverse = data[DG_REVERSE_EDGE_TYPE].edge_index
-        reverse_keys = reverse[1] * num_genes + reverse[0]
-        result[DG_REVERSE_EDGE_TYPE].edge_index = reverse[
-            :, ~torch.isin(reverse_keys, removed_keys)
-        ]
+        reverse_keep = ~torch.isin(reverse[1] * num_genes + reverse[0], removed_keys)
+        result[DG_REVERSE_EDGE_TYPE].edge_index = reverse[:, reverse_keep]
+        reverse_weight = getattr(data[DG_REVERSE_EDGE_TYPE], "edge_weight", None)
+        if reverse_weight is not None:
+            result[DG_REVERSE_EDGE_TYPE].edge_weight = reverse_weight[reverse_keep]
     return result
 
 
@@ -271,6 +277,7 @@ def train_gnn(
     seed: int = 42,
     supervision_ratio: float = DEFAULT_SUPERVISION_RATIO,
     patience: int | None = None,
+    use_edge_weights: bool = False,
 ) -> tuple[GNNLinkPredictor, TrainingHistory]:
     """Train `GNNLinkPredictor` on `package`'s train split, tracking validation loss too.
 
@@ -295,6 +302,13 @@ def train_gnn(
     DistMult (`embedding_dim` parameters -- see `GNNLinkPredictor`), which
     tolerates 64-dim node embeddings better, confirmed by a grid sweep on the
     real dataset (highest validation MRR at weight_decay=1e-4, dim=64).
+
+    `use_edge_weights` (default off) only takes effect if `package.data` (and the
+    per-epoch pruned graph `build_gnn_epoch_batch` derives from it) already
+    carries an `edge_weight` on `ASSOCIATED_WITH`/`rev_ASSOCIATED_WITH` -- e.g.
+    attached beforehand via `app/modeling/edge_weights.py`. This function does not
+    attach weights itself; it only decides whether `GNNLinkPredictor` is built to
+    use them if present.
     """
     torch.manual_seed(seed)
     split_generator = torch.Generator().manual_seed(seed)
@@ -308,6 +322,7 @@ def train_gnn(
         hidden_dim=hidden_dim,
         embedding_dim=embedding_dim,
         seed=seed,
+        use_edge_weights=use_edge_weights,
     )
 
     val_disease_idx, val_gene_idx, val_labels = _build_pair_batch(package, "validation")
