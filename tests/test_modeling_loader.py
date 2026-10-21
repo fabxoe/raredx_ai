@@ -11,6 +11,7 @@ from app.modeling.loader import (
     load_negative_pairs_csv,
     load_node_csv,
     load_pair_csv,
+    split_negative_pairs,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "modeling"
@@ -39,3 +40,24 @@ def test_load_negative_pairs_csv_returns_label_zero_pairs() -> None:
     negatives = load_negative_pairs_csv(FIXTURE_DIR / "negative_pairs.csv")
     assert len(negatives) == 6
     assert all(isinstance(p, tuple) and len(p) == 2 for p in negatives)
+
+
+def test_split_negative_pairs_matches_requested_sizes_and_is_disjoint() -> None:
+    negatives = load_negative_pairs_csv(FIXTURE_DIR / "negative_pairs.csv")
+    result = split_negative_pairs(negatives, split_sizes={"train": 4, "validation": 1, "test": 1})
+    assert [len(result[name]) for name in ("train", "validation", "test")] == [4, 1, 1]
+    seen = [p for group in result.values() for p in group]
+    assert len(seen) == len(set(seen))
+
+
+def test_split_negative_pairs_is_deterministic_for_fixed_seed() -> None:
+    negatives = load_negative_pairs_csv(FIXTURE_DIR / "negative_pairs.csv")
+    first = split_negative_pairs(negatives, split_sizes={"train": 4, "validation": 1, "test": 1}, seed=42)
+    second = split_negative_pairs(list(reversed(negatives)), split_sizes={"train": 4, "validation": 1, "test": 1}, seed=42)
+    assert first == second
+
+
+def test_split_negative_pairs_rejects_oversized_request() -> None:
+    negatives = load_negative_pairs_csv(FIXTURE_DIR / "negative_pairs.csv")
+    with pytest.raises(ValueError):
+        split_negative_pairs(negatives, split_sizes={"train": 10, "validation": 1, "test": 1})

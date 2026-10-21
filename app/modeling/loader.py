@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import random
 from pathlib import Path
 from typing import Any
 
@@ -93,4 +94,47 @@ def load_negative_pairs_csv(path: Path) -> list[tuple[str, str]]:
                 target_id = row.get("target_id")
                 if source_id and target_id:
                     result.append((source_id, target_id))
+    return result
+
+
+def split_negative_pairs(
+    negatives: list[tuple[str, str]],
+    *,
+    split_sizes: dict[str, int],
+    seed: int = 42,
+) -> dict[str, list[tuple[str, str]]]:
+    """Split negative pairs deterministically into train/validation/test groups.
+
+    Args:
+        negatives: List of (source_id, target_id) tuples.
+        split_sizes: Dictionary with keys "train", "validation", "test" specifying sizes.
+        seed: Random seed for reproducibility (default 42).
+
+    Returns:
+        Dictionary with keys "train", "validation", "test" containing the split pairs.
+
+    Raises:
+        ValueError: If sum of split sizes exceeds number of negatives.
+    """
+    total_requested = sum(split_sizes.values())
+    if total_requested > len(negatives):
+        raise ValueError(
+            f"split_sizes sum ({total_requested}) exceeds number of negatives ({len(negatives)})"
+        )
+
+    # Sort for stable base order, then shuffle with local RNG
+    sorted_pairs = sorted(negatives)
+    shuffled_pairs = sorted_pairs[:]
+    random.Random(seed).shuffle(shuffled_pairs)
+
+    # Slice sequentially in order: train, validation, test
+    train_size = split_sizes.get("train", 0)
+    val_size = split_sizes.get("validation", 0)
+
+    result = {
+        "train": shuffled_pairs[:train_size],
+        "validation": shuffled_pairs[train_size : train_size + val_size],
+        "test": shuffled_pairs[train_size + val_size : train_size + val_size + split_sizes.get("test", 0)],
+    }
+
     return result
