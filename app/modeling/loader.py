@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import csv
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import torch
+from torch_geometric.data import HeteroData
 
 NodeRecord = dict[str, Any]
 
@@ -138,3 +142,81 @@ def split_negative_pairs(
     }
 
     return result
+
+
+@dataclass
+class NodeIndex:
+    """Ordered id list for one node type, plus id->position index and rankable subset."""
+
+    ids: list[str]
+    index: dict[str, int]
+    rankable: set[str] = field(default_factory=set)
+
+
+def build_node_index(nodes: dict[str, NodeRecord]) -> NodeIndex:
+    """Build a NodeIndex from a dict of node_id -> NodeRecord (as returned by load_node_csv).
+
+    Preserves the insertion order of `nodes` for `ids`, and collects the subset of ids
+    whose record has `rankable is True` into `rankable`.
+    """
+    ids = list(nodes.keys())
+    index = {node_id: position for position, node_id in enumerate(ids)}
+    rankable = {node_id for node_id, record in nodes.items() if record.get("rankable") is True}
+    return NodeIndex(ids=ids, index=index, rankable=rankable)
+
+
+def _node_type_for_id(node_id: str, node_indexes: dict[str, NodeIndex]) -> str | None:
+    """Find which node type's NodeIndex contains this id."""
+    for node_type, node_index in node_indexes.items():
+        if node_id in node_index.index:
+            return node_type
+    return None
+
+
+def build_hetero_data(
+    node_indexes: dict[str, NodeIndex], message_edges: list[dict[str, Any]]
+) -> HeteroData:
+    """Build a PyG HeteroData graph from node indexes and message edges.
+
+    Adds one edge type per relation in `message_edges`, keyed as
+    (source_node_type, relation, target_node_type), plus a mirrored reverse edge type
+    (target_node_type, f"rev_{relation}", source_node_type) for every relation, so that
+    message-passing GNN layers can propagate information in both directions.
+    """
+    data = HeteroData()
+
+    for node_type, node_index in node_indexes.items():
+        data[node_type].num_nodes = len(node_index.ids)
+
+    # Group edges by (relation, source_node_type, target_node_type)
+    grouped: dict[tuple[str, str, str], list[tuple[int, int]]] = {}
+    for edge in message_edges:
+        relation = edge["relation"]
+        source_id = edge["source_id"]
+        target_id = edge["target_id"]
+
+        source_type = _node_type_for_id(source_id, node_indexes)
+        target_type = _node_type_for_id(target_id, node_indexes)
+        if source_type is None or target_type is None:
+            raise ValueError(
+                f"Could not resolve node type for edge {source_id} -{relation}-> {target_id}"
+            )
+
+        source_pos = node_indexes[source_type].index[source_id]
+        target_pos = node_indexes[target_type].index[target_id]
+
+        key = (relation, source_type, target_type)
+        grouped.setdefault(key, []).append((source_pos, target_pos))
+
+    for (relation, source_type, target_type), pairs in grouped.items():
+        source_positions = [pair[0] for pair in pairs]
+        target_positions = [pair[1] for pair in pairs]
+        edge_index = torch.tensor([source_positions, target_positions], dtype=torch.long)
+        reverse_edge_index = torch.tensor(
+            [target_positions, source_positions], dtype=torch.long
+        )
+
+        data[source_type, relation, target_type].edge_index = edge_index
+        data[target_type, f"rev_{relation}", source_type].edge_index = reverse_edge_index
+
+    return data

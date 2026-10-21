@@ -5,8 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import torch
 
 from app.modeling.loader import (
+    build_hetero_data,
+    build_node_index,
     load_message_edge_csv,
     load_negative_pairs_csv,
     load_node_csv,
@@ -61,3 +64,39 @@ def test_split_negative_pairs_rejects_oversized_request() -> None:
     negatives = load_negative_pairs_csv(FIXTURE_DIR / "negative_pairs.csv")
     with pytest.raises(ValueError):
         split_negative_pairs(negatives, split_sizes={"train": 10, "validation": 1, "test": 1})
+
+
+def test_build_node_index_separates_rankable_ids() -> None:
+    nodes = load_node_csv(FIXTURE_DIR / "gene_nodes.csv")
+    index = build_node_index(nodes)
+    assert "HGNC:5" in index.ids and "HGNC:5" not in index.rankable
+    assert "HGNC:1" in index.rankable
+    assert index.index["HGNC:1"] == index.ids.index("HGNC:1")
+
+
+def test_build_hetero_data_has_forward_and_reverse_edge_types() -> None:
+    genes = build_node_index(load_node_csv(FIXTURE_DIR / "gene_nodes.csv"))
+    diseases = build_node_index(load_node_csv(FIXTURE_DIR / "disease_nodes.csv"))
+    phenotypes = build_node_index(load_node_csv(FIXTURE_DIR / "hpo_nodes.csv"))
+    edges = load_message_edge_csv(FIXTURE_DIR / "training_message_edges.csv")
+    data = build_hetero_data(
+        {"Gene": genes, "Disease": diseases, "Phenotype": phenotypes}, edges
+    )
+    assert ("Disease", "ASSOCIATED_WITH", "Gene") in data.edge_types
+    assert ("Gene", "rev_ASSOCIATED_WITH", "Disease") in data.edge_types
+    assert ("Phenotype", "rev_IS_A", "Phenotype") in data.edge_types
+    assert ("Phenotype", "rev_HAS_PHENOTYPE", "Disease") in data.edge_types
+    forward = data["Disease", "ASSOCIATED_WITH", "Gene"].edge_index
+    reverse = data["Gene", "rev_ASSOCIATED_WITH", "Disease"].edge_index
+    assert forward.shape[1] == reverse.shape[1] == 4
+    assert torch.equal(forward[[0, 1]], reverse[[1, 0]])
+
+
+def test_build_hetero_data_excludes_test_split_pairs() -> None:
+    # training_message_edges.csv fixture must not contain the ORPHA:4/HGNC:5 test pair
+    edges = load_message_edge_csv(FIXTURE_DIR / "training_message_edges.csv")
+    test_pairs = set(load_pair_csv(FIXTURE_DIR / "splits/test.csv"))
+    message_pairs = {
+        (e["source_id"], e["target_id"]) for e in edges if e["relation"] == "ASSOCIATED_WITH"
+    }
+    assert not (message_pairs & test_pairs)
