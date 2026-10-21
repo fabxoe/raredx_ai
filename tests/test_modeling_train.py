@@ -4,8 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.modeling.loader import load_graph_package
-from app.modeling.train import train_baseline, train_gnn
+import pytest
+import torch
+from torch_geometric.data import HeteroData
+
+from app.modeling.loader import GraphPackage, load_graph_package
+from app.modeling.models import GNNLinkPredictor
+from app.modeling.train import (
+    DG_EDGE_TYPE,
+    DG_REVERSE_EDGE_TYPE,
+    build_gnn_epoch_batch,
+    remove_dg_edges,
+    split_message_supervision,
+    train_baseline,
+    train_gnn,
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "modeling"
 
@@ -32,8 +45,11 @@ def test_train_baseline_records_validation_loss_without_backprop() -> None:
 
 def test_train_gnn_reduces_loss_on_fixture_graph() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
-    _, history = train_gnn(package, epochs=20, hidden_dim=8, embedding_dim=8, seed=42)
-    assert history.train_loss[-1] < history.train_loss[0]
+    _, history = train_gnn(package, epochs=30, hidden_dim=8, embedding_dim=8, seed=42)
+    # Each epoch's BCE batch is a fresh held-out supervision sample, so per-epoch
+    # loss is noisy; compare windowed means rather than single endpoints.
+    first, last = history.train_loss[:5], history.train_loss[-5:]
+    assert sum(last) / len(last) < sum(first) / len(first)
 
 
 def test_train_gnn_is_deterministic_for_fixed_seed() -> None:
@@ -48,3 +64,136 @@ def test_train_gnn_records_validation_loss_without_backprop() -> None:
     _, history = train_gnn(package, epochs=5, hidden_dim=8, embedding_dim=8, seed=42)
     assert len(history.validation_loss) == 5
     assert len(history.train_loss) == 5
+
+
+# --- edge-level held-out supervision (GNN train-target leakage guard) --------
+
+
+def _dg_pairs(data: HeteroData, package: GraphPackage) -> tuple[set, set]:
+    """(forward, reverse) Disease-Gene pairs present in `data`, as id tuples."""
+    disease_ids = package.node_indexes["Disease"].ids
+    gene_ids = package.node_indexes["Gene"].ids
+    forward = {
+        (disease_ids[d], gene_ids[g])
+        for d, g in data[DG_EDGE_TYPE].edge_index.t().tolist()
+    }
+    reverse = {
+        (disease_ids[d], gene_ids[g])
+        for g, d in data[DG_REVERSE_EDGE_TYPE].edge_index.t().tolist()
+    }
+    return forward, reverse
+
+
+def test_split_message_supervision_is_seeded_partition() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    train_pairs = package.positives["train"]
+    message, supervision = split_message_supervision(
+        train_pairs, supervision_ratio=0.5, generator=torch.Generator().manual_seed(42)
+    )
+    assert message == [("ORPHA:1", "HGNC:1"), ("ORPHA:2", "HGNC:2")]
+    assert supervision == [("ORPHA:3", "HGNC:3"), ("ORPHA:4", "HGNC:4")]
+    assert sorted(message + supervision) == sorted(train_pairs)
+
+
+def test_split_message_supervision_rejects_bad_ratio() -> None:
+    with pytest.raises(ValueError):
+        split_message_supervision(
+            [("D", "G")], supervision_ratio=0.0, generator=torch.Generator()
+        )
+
+
+def test_remove_dg_edges_drops_forward_and_reverse_without_mutating_input() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    held_out = [("ORPHA:3", "HGNC:3")]
+    pruned = remove_dg_edges(package.data, package.node_indexes, held_out)
+
+    forward, reverse = _dg_pairs(pruned, package)
+    assert ("ORPHA:3", "HGNC:3") not in forward
+    assert ("ORPHA:3", "HGNC:3") not in reverse
+    assert forward == reverse == set(package.positives["train"]) - set(held_out)
+    # Non-DG edge types untouched; original package graph still complete.
+    for edge_type in package.data.edge_types:
+        if edge_type not in (DG_EDGE_TYPE, DG_REVERSE_EDGE_TYPE):
+            assert torch.equal(pruned[edge_type].edge_index, package.data[edge_type].edge_index)
+    full_forward, full_reverse = _dg_pairs(package.data, package)
+    assert full_forward == full_reverse == set(package.positives["train"])
+
+
+def test_epoch_batch_supervision_pairs_are_absent_from_encoded_graph() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    generator = torch.Generator().manual_seed(42)
+
+    # Fixed seed -> the first epoch holds out exactly ORPHA:3/HGNC:3.
+    batch = build_gnn_epoch_batch(package, supervision_ratio=0.3, generator=generator)
+    assert batch.supervision_pairs == [("ORPHA:3", "HGNC:3")]
+    forward, reverse = _dg_pairs(batch.message_data, package)
+    assert ("ORPHA:3", "HGNC:3") not in forward
+    assert ("ORPHA:3", "HGNC:3") not in reverse
+    assert forward == set(package.positives["train"]) - {("ORPHA:3", "HGNC:3")}
+
+    # BCE positives are exactly the held-out pairs; negatives balance them 1:1.
+    disease_ids = package.node_indexes["Disease"].ids
+    gene_ids = package.node_indexes["Gene"].ids
+    labelled = [
+        ((disease_ids[d], gene_ids[g]), label)
+        for d, g, label in zip(
+            batch.disease_idx.tolist(), batch.gene_idx.tolist(), batch.labels.tolist()
+        )
+    ]
+    positives = [pair for pair, label in labelled if label == 1.0]
+    negatives = [pair for pair, label in labelled if label == 0.0]
+    assert positives == batch.supervision_pairs
+    assert negatives == batch.negative_pairs
+    assert len(negatives) == len(positives)
+    assert set(negatives) <= set(package.negatives["train"])
+
+    # Re-sampled each epoch: a later draw holds out a different pair.
+    second = build_gnn_epoch_batch(package, supervision_ratio=0.3, generator=generator)
+    assert second.supervision_pairs == [("ORPHA:1", "HGNC:1")]
+
+
+def test_train_gnn_never_encodes_a_supervised_pair_during_training(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    train_pairs = set(package.positives["train"])
+    records: list[tuple[bool, set, set]] = []
+    decoded: list[set] = []
+    original_encode = GNNLinkPredictor.encode
+    original_decode = GNNLinkPredictor.decode
+
+    def recording_encode(self: GNNLinkPredictor, data: HeteroData) -> dict:
+        forward, reverse = _dg_pairs(data, package)
+        records.append((self.training, forward, reverse))
+        return original_encode(self, data)
+
+    def recording_decode(self, disease_emb, gene_emb, disease_idx, gene_idx):  # type: ignore[no-untyped-def]
+        if self.training:
+            disease_ids = package.node_indexes["Disease"].ids
+            gene_ids = package.node_indexes["Gene"].ids
+            decoded.append(
+                {(disease_ids[d], gene_ids[g]) for d, g in zip(disease_idx.tolist(), gene_idx.tolist())}
+            )
+        return original_decode(self, disease_emb, gene_emb, disease_idx, gene_idx)
+
+    monkeypatch.setattr(GNNLinkPredictor, "encode", recording_encode)
+    monkeypatch.setattr(GNNLinkPredictor, "decode", recording_decode)
+    train_gnn(package, epochs=6, hidden_dim=8, embedding_dim=8, seed=42)
+
+    training_graphs = [(fwd, rev) for is_training, fwd, rev in records if is_training]
+    eval_graphs = [(fwd, rev) for is_training, fwd, rev in records if not is_training]
+    assert len(training_graphs) == len(decoded) == 6
+    held_out_seen: set = set()
+    for (forward, reverse), scored in zip(training_graphs, decoded):
+        supervised = scored & train_pairs
+        assert supervised, "each epoch must score some train positives"
+        # No train positive scored this epoch is in the graph it was encoded with.
+        assert not (supervised & forward)
+        assert not (supervised & reverse)
+        # Every other train positive stays as message context.
+        assert forward == reverse == train_pairs - supervised
+        held_out_seen |= supervised
+    # Different pairs are held out across epochs (fresh per-epoch split).
+    assert len(held_out_seen) > 1
+    # Validation encodes the full train message graph.
+    assert eval_graphs and all(fwd == rev == train_pairs for fwd, rev in eval_graphs)

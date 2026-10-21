@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 
 import torch
 from torch import nn
+from torch_geometric.data import HeteroData
 
-from app.modeling.loader import GraphPackage
+from app.modeling.loader import GraphPackage, NodeIndex
 from app.modeling.models import BaselineScorer, GNNLinkPredictor, compute_gene_prior
 
 
@@ -97,6 +98,124 @@ def train_baseline(
     return model, history
 
 
+DG_EDGE_TYPE: tuple[str, str, str] = ("Disease", "ASSOCIATED_WITH", "Gene")
+DG_REVERSE_EDGE_TYPE: tuple[str, str, str] = ("Gene", "rev_ASSOCIATED_WITH", "Disease")
+DEFAULT_SUPERVISION_RATIO: float = 0.3
+
+
+def split_message_supervision(
+    train_pairs: list[tuple[str, str]],
+    *,
+    supervision_ratio: float,
+    generator: torch.Generator,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Randomly partition train positives into (message, supervision) subsets.
+
+    ``round(len * supervision_ratio)`` pairs (at least 1 when there is any pair) go to
+    the supervision subset, the rest stay as message-passing context. The draw uses
+    only ``generator``, never global RNG. Both outputs keep ``train_pairs`` order.
+    """
+    if not 0.0 < supervision_ratio <= 1.0:
+        raise ValueError(f"supervision_ratio must be in (0, 1], got {supervision_ratio}")
+    count = len(train_pairs)
+    if count == 0:
+        return [], []
+    num_supervision = min(count, max(1, round(count * supervision_ratio)))
+    permutation = torch.randperm(count, generator=generator)
+    supervision_positions = set(permutation[:num_supervision].tolist())
+    message = [pair for i, pair in enumerate(train_pairs) if i not in supervision_positions]
+    supervision = [pair for i, pair in enumerate(train_pairs) if i in supervision_positions]
+    return message, supervision
+
+
+def remove_dg_edges(
+    data: HeteroData,
+    node_indexes: dict[str, NodeIndex],
+    pairs: list[tuple[str, str]],
+) -> HeteroData:
+    """Return a copy of ``data`` without the given Disease-Gene pairs' edges.
+
+    Removes each pair's forward ``(Disease, ASSOCIATED_WITH, Gene)`` edge AND its
+    mirrored ``(Gene, rev_ASSOCIATED_WITH, Disease)`` edge. ``data`` itself is not
+    modified. Edge types are kept even if they become empty, so the model's
+    metadata still matches.
+    """
+    result = data.clone()
+    if not pairs or DG_EDGE_TYPE not in data.edge_types:
+        return result
+
+    disease_index = node_indexes["Disease"].index
+    gene_index = node_indexes["Gene"].index
+    num_genes = len(node_indexes["Gene"].ids)
+    removed_keys = torch.tensor(
+        [disease_index[d] * num_genes + gene_index[g] for d, g in pairs], dtype=torch.long
+    )
+
+    forward = data[DG_EDGE_TYPE].edge_index
+    forward_keys = forward[0] * num_genes + forward[1]
+    result[DG_EDGE_TYPE].edge_index = forward[:, ~torch.isin(forward_keys, removed_keys)]
+
+    if DG_REVERSE_EDGE_TYPE in data.edge_types:
+        reverse = data[DG_REVERSE_EDGE_TYPE].edge_index
+        reverse_keys = reverse[1] * num_genes + reverse[0]
+        result[DG_REVERSE_EDGE_TYPE].edge_index = reverse[
+            :, ~torch.isin(reverse_keys, removed_keys)
+        ]
+    return result
+
+
+@dataclass
+class GNNEpochBatch:
+    """One GNN training epoch's message graph and BCE batch."""
+
+    message_data: HeteroData
+    supervision_pairs: list[tuple[str, str]]
+    negative_pairs: list[tuple[str, str]]
+    disease_idx: torch.LongTensor
+    gene_idx: torch.LongTensor
+    labels: torch.Tensor
+
+
+def build_gnn_epoch_batch(
+    package: GraphPackage,
+    *,
+    supervision_ratio: float,
+    generator: torch.Generator,
+) -> GNNEpochBatch:
+    """Edge-level held-out supervision for one GNN training epoch.
+
+    Train positives are freshly partitioned into message/supervision subsets. The
+    supervision pairs become this epoch's BCE positives and their forward + reverse
+    ``ASSOCIATED_WITH`` edges are removed from the graph the model encodes, so a
+    train positive never reaches its own score through message passing. An equal
+    number of train negatives (sampled from ``package.negatives["train"]`` with the
+    same generator) keeps the 1:1 class balance of the full train split.
+    """
+    _message, supervision = split_message_supervision(
+        package.positives["train"], supervision_ratio=supervision_ratio, generator=generator
+    )
+    train_negatives = package.negatives["train"]
+    num_negatives = min(len(supervision), len(train_negatives))
+    negative_positions = sorted(
+        torch.randperm(len(train_negatives), generator=generator)[:num_negatives].tolist()
+    )
+    negatives = [train_negatives[i] for i in negative_positions]
+
+    disease_index = package.node_indexes["Disease"].index
+    gene_index = package.node_indexes["Gene"].index
+    pos_disease_idx, pos_gene_idx = _pairs_to_index_tensors(supervision, disease_index, gene_index)
+    neg_disease_idx, neg_gene_idx = _pairs_to_index_tensors(negatives, disease_index, gene_index)
+
+    return GNNEpochBatch(
+        message_data=remove_dg_edges(package.data, package.node_indexes, supervision),
+        supervision_pairs=supervision,
+        negative_pairs=negatives,
+        disease_idx=torch.cat([pos_disease_idx, neg_disease_idx]),
+        gene_idx=torch.cat([pos_gene_idx, neg_gene_idx]),
+        labels=torch.cat([torch.ones(len(supervision)), torch.zeros(len(negatives))]),
+    )
+
+
 def train_gnn(
     package: GraphPackage,
     *,
@@ -105,9 +224,19 @@ def train_gnn(
     hidden_dim: int = 64,
     embedding_dim: int = 64,
     seed: int = 42,
+    supervision_ratio: float = DEFAULT_SUPERVISION_RATIO,
 ) -> tuple[GNNLinkPredictor, TrainingHistory]:
-    """Train `GNNLinkPredictor` on `package`'s train split, tracking validation loss too."""
+    """Train `GNNLinkPredictor` on `package`'s train split, tracking validation loss too.
+
+    Uses edge-level held-out supervision (see `build_gnn_epoch_batch`): each epoch,
+    a fresh ``supervision_ratio`` fraction of train positives is removed from the
+    message graph and used as BCE positives, so the model cannot score a train
+    positive by detecting its own edge in the encoded graph. Validation loss (and
+    downstream evaluation) encodes the FULL train message graph, the correct
+    transductive setup since val/test positives were never in it.
+    """
     torch.manual_seed(seed)
+    split_generator = torch.Generator().manual_seed(seed)
 
     num_nodes = {
         node_type: len(node_index.ids) for node_type, node_index in package.node_indexes.items()
@@ -120,7 +249,6 @@ def train_gnn(
         seed=seed,
     )
 
-    train_disease_idx, train_gene_idx, train_labels = _build_pair_batch(package, "train")
     val_disease_idx, val_gene_idx, val_labels = _build_pair_batch(package, "validation")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -129,13 +257,16 @@ def train_gnn(
     history = TrainingHistory()
 
     for _epoch in range(epochs):
+        batch = build_gnn_epoch_batch(
+            package, supervision_ratio=supervision_ratio, generator=split_generator
+        )
         model.train()
         optimizer.zero_grad()
-        embeddings = model.encode(package.data)
+        embeddings = model.encode(batch.message_data)
         train_logits = model.decode(
-            embeddings["Disease"], embeddings["Gene"], train_disease_idx, train_gene_idx
+            embeddings["Disease"], embeddings["Gene"], batch.disease_idx, batch.gene_idx
         )
-        train_loss = loss_fn(train_logits, train_labels)
+        train_loss = loss_fn(train_logits, batch.labels)
         train_loss.backward()
         optimizer.step()
         history.train_loss.append(train_loss.item())
