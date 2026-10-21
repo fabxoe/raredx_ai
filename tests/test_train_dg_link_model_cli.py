@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+import torch
+
 from scripts.train_dg_link_model import main
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "modeling"
@@ -12,6 +15,7 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "modeling"
 
 def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
     output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
     exit_code = main(
         [
             "--graph-dir",
@@ -22,6 +26,8 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
             "3",
             "--output",
             str(output),
+            "--model-dir",
+            str(model_dir),
         ]
     )
     assert exit_code == 0
@@ -45,6 +51,7 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
 
 def test_cli_creates_output_directory_if_missing(tmp_path: Path) -> None:
     output = tmp_path / "nested" / "dir" / "report.json"
+    model_dir = tmp_path / "models"
     exit_code = main(
         [
             "--graph-dir",
@@ -55,7 +62,60 @@ def test_cli_creates_output_directory_if_missing(tmp_path: Path) -> None:
             "2",
             "--output",
             str(output),
+            "--model-dir",
+            str(model_dir),
         ]
     )
     assert exit_code == 0
     assert output.is_file()
+
+
+def test_cli_saves_loadable_model_checkpoints(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    exit_code = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--epochs",
+            "2",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+        ]
+    )
+    assert exit_code == 0
+    baseline_checkpoint = model_dir / "baseline_state_dict.pt"
+    gnn_checkpoint = model_dir / "gnn_state_dict.pt"
+    assert baseline_checkpoint.is_file()
+    assert gnn_checkpoint.is_file()
+    baseline_state = torch.load(baseline_checkpoint, weights_only=True)
+    gnn_state = torch.load(gnn_checkpoint, weights_only=True)
+    assert "gene_prior" in baseline_state
+    assert any(key.startswith("bilinear_weight") for key in gnn_state)
+
+
+def test_cli_refuses_to_overwrite_existing_outputs_without_flag(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    args = [
+        "--graph-dir",
+        str(FIXTURE_DIR),
+        "--seed",
+        "42",
+        "--epochs",
+        "2",
+        "--output",
+        str(output),
+        "--model-dir",
+        str(model_dir),
+    ]
+    assert main(args) == 0
+
+    with pytest.raises(FileExistsError):
+        main(args)
+
+    assert main([*args, "--overwrite"]) == 0

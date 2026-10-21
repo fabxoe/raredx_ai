@@ -5,6 +5,10 @@ graph package (see `app/modeling/loader.py`), evaluates each on the validation a
 test splits via `evaluate_link_prediction` (see `app/modeling/evaluate.py`), and
 writes a single JSON report with top-level keys `"baseline"` and `"gnn"`, each
 holding `{"validation": ..., "test": ...}` serialized `EvaluationReport`s.
+
+Also saves each trained model's `state_dict` under `--model-dir` so the run can be
+shared and reloaded without retraining. Refuses to overwrite an existing checkpoint
+or report file unless `--overwrite` is passed.
 """
 
 from __future__ import annotations
@@ -84,6 +88,17 @@ def _report_to_dict(report: EvaluationReport) -> dict:
     return dataclasses.asdict(report)
 
 
+def _check_no_clobber(paths: list[Path], *, overwrite: bool) -> None:
+    if overwrite:
+        return
+    existing = [str(path) for path in paths if path.exists()]
+    if existing:
+        raise FileExistsError(
+            "refusing to overwrite existing output file(s) without --overwrite: "
+            + ", ".join(existing)
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -97,7 +112,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output", type=Path, default=Path("reports/dg_link_prediction_report.json")
     )
+    parser.add_argument("--model-dir", type=Path, default=Path("reports/models"))
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="allow overwriting an existing report or checkpoint at the output paths",
+    )
     args = parser.parse_args(argv)
+
+    baseline_checkpoint = args.model_dir / "baseline_state_dict.pt"
+    gnn_checkpoint = args.model_dir / "gnn_state_dict.pt"
+    _check_no_clobber(
+        [args.output, baseline_checkpoint, gnn_checkpoint], overwrite=args.overwrite
+    )
 
     package = load_graph_package(args.graph_dir, seed=args.seed)
 
@@ -128,6 +155,10 @@ def main(argv: list[str] | None = None) -> int:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    args.model_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(baseline_model.state_dict(), baseline_checkpoint)
+    torch.save(gnn_model.state_dict(), gnn_checkpoint)
 
     return 0
 
