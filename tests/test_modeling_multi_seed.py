@@ -86,6 +86,20 @@ def test_run_baseline_multi_seed_different_seeds_give_different_histories() -> N
     assert run.histories[1].train_loss != run.histories[2].train_loss
 
 
+def test_run_gnn_multi_seed_passes_through_associated_with_aggr() -> None:
+    from app.modeling.edge_weights import attach_associated_with_weights
+
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    weights = {("ORPHA:1", "HGNC:1"): 1.0, ("ORPHA:2", "HGNC:2"): 0.5}
+    package.data = attach_associated_with_weights(package.data, package.node_indexes, weights)
+
+    run = run_gnn_multi_seed(
+        package, [1], epochs=2, hidden_dim=8, embedding_dim=8, patience=None,
+        associated_with_aggr="sum",
+    )
+    assert run.models[1].associated_with_aggr == "sum"
+
+
 def test_run_gnn_multi_seed_trains_once_per_seed() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     run = run_gnn_multi_seed(

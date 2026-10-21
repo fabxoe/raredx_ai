@@ -17,6 +17,7 @@ from torch import nn
 
 from app.modeling.evaluate import EvaluationReport, RankingMetrics, evaluate_link_prediction
 from app.modeling.loader import GraphPackage
+from app.modeling.models import AssociatedWithAggr
 from app.modeling.scoring import baseline_score_pair, gnn_score_pair
 from app.modeling.train import TrainingHistory, train_baseline, train_gnn
 
@@ -187,9 +188,15 @@ def run_gnn_multi_seed(
     hidden_dim: int = 64,
     embedding_dim: int = 64,
     patience: int | None = 20,
+    associated_with_aggr: AssociatedWithAggr = "mean",
     on_seed_done: SeedCallback | None = None,
 ) -> MultiSeedRun:
-    """Train+evaluate `GNNLinkPredictor` once per seed in `seeds`, same graph split."""
+    """Train+evaluate `GNNLinkPredictor` once per seed in `seeds`, same graph split.
+
+    `associated_with_aggr` is passed straight to `train_gnn`/`GNNLinkPredictor`
+    -- see their docstrings. With `"sum"`, an `edge_weight` already attached to
+    `package.data` is used if present; this function does not attach one itself.
+    """
 
     def train_fn(pkg: GraphPackage, seed: int) -> tuple[nn.Module, TrainingHistory]:
         return train_gnn(
@@ -201,6 +208,7 @@ def run_gnn_multi_seed(
             embedding_dim=embedding_dim,
             seed=seed,
             patience=patience,
+            associated_with_aggr=associated_with_aggr,
         )
 
     return _run_seeds(package, seeds, train_fn, gnn_score_pair, on_seed_done)

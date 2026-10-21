@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import torch
 from torch_geometric.data import HeteroData
 
@@ -102,6 +103,91 @@ def _build_gnn(package: GraphPackage, *, seed: int = 42) -> GNNLinkPredictor:
         embedding_dim=8,
         seed=seed,
     )
+
+
+def test_gnn_associated_with_aggr_rejects_invalid_value() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    with pytest.raises(ValueError, match="associated_with_aggr"):
+        GNNLinkPredictor(
+            package.data.metadata(),
+            num_nodes=_num_nodes(package),
+            hidden_dim=8,
+            embedding_dim=8,
+            seed=42,
+            associated_with_aggr="max",  # type: ignore[arg-type]
+        )
+
+
+def test_gnn_associated_with_aggr_mean_is_default_and_matches_prior_behavior() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    model = _build_gnn(package)
+    assert model.associated_with_aggr == "mean"
+    # No GraphConv anywhere when the feature is off.
+    from torch_geometric.nn import GraphConv
+
+    for conv in model.convs:
+        assert not any(isinstance(c, GraphConv) for c in conv.convs.values())
+
+
+def test_gnn_associated_with_aggr_sum_uses_graphconv_only_for_associated_with() -> None:
+    from torch_geometric.nn import GraphConv, SAGEConv
+
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    model = GNNLinkPredictor(
+        package.data.metadata(),
+        num_nodes=_num_nodes(package),
+        hidden_dim=8,
+        embedding_dim=8,
+        seed=42,
+        associated_with_aggr="sum",
+    )
+    for conv in model.convs:
+        for edge_type, sub_conv in conv.convs.items():
+            if edge_type[1] in ("ASSOCIATED_WITH", "rev_ASSOCIATED_WITH"):
+                assert isinstance(sub_conv, GraphConv)
+            else:
+                assert isinstance(sub_conv, SAGEConv)
+
+
+def test_gnn_edge_weights_change_disease_embedding_under_sum_aggr() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    from app.modeling.edge_weights import attach_associated_with_weights
+
+    skewed_weights = {("ORPHA:1", "HGNC:1"): 5.0}
+    weighted_data = attach_associated_with_weights(
+        package.data, package.node_indexes, skewed_weights
+    )
+
+    model = GNNLinkPredictor(
+        package.data.metadata(),
+        num_nodes=_num_nodes(package),
+        hidden_dim=8,
+        embedding_dim=8,
+        seed=42,
+        associated_with_aggr="sum",
+    )
+    model.eval()
+    with torch.no_grad():
+        unweighted = model.encode(package.data)["Disease"]
+        weighted = model.encode(weighted_data)["Disease"]
+    assert not torch.allclose(unweighted, weighted)
+
+
+def test_gnn_edge_weights_are_a_no_op_under_mean_aggr() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    from app.modeling.edge_weights import attach_associated_with_weights
+
+    skewed_weights = {("ORPHA:1", "HGNC:1"): 5.0}
+    weighted_data = attach_associated_with_weights(
+        package.data, package.node_indexes, skewed_weights
+    )
+
+    model = _build_gnn(package)  # associated_with_aggr="mean" (default)
+    model.eval()
+    with torch.no_grad():
+        unweighted = model.encode(package.data)["Disease"]
+        ignored = model.encode(weighted_data)["Disease"]
+    assert torch.equal(unweighted, ignored)
 
 
 def test_gnn_encode_returns_embedding_per_node() -> None:

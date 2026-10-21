@@ -121,6 +121,26 @@ def test_train_gnn_weight_decay_shrinks_relation_weight() -> None:
     assert decayed.relation_weight.norm().item() < plain.relation_weight.norm().item()
 
 
+def test_train_gnn_associated_with_aggr_sum_runs_end_to_end_on_weighted_package() -> None:
+    from app.modeling.edge_weights import attach_associated_with_weights
+
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    weights = {
+        ("ORPHA:1", "HGNC:1"): 1.0,
+        ("ORPHA:2", "HGNC:2"): 0.8,
+        ("ORPHA:3", "HGNC:3"): 0.5,
+        ("ORPHA:4", "HGNC:4"): 0.2,
+    }
+    package.data = attach_associated_with_weights(package.data, package.node_indexes, weights)
+
+    model, history = train_gnn(
+        package, epochs=10, hidden_dim=8, embedding_dim=8, seed=42, associated_with_aggr="sum"
+    )
+    assert model.associated_with_aggr == "sum"
+    assert len(history.train_loss) == 10
+    assert all(loss == loss for loss in history.train_loss)  # no NaNs
+
+
 def test_train_gnn_reduces_loss_on_fixture_graph() -> None:
     package = load_graph_package(FIXTURE_DIR, seed=42)
     _, history = train_gnn(package, epochs=30, hidden_dim=8, embedding_dim=8, seed=42)
@@ -213,6 +233,36 @@ def test_remove_dg_edges_drops_forward_and_reverse_without_mutating_input() -> N
             assert torch.equal(pruned[edge_type].edge_index, package.data[edge_type].edge_index)
     full_forward, full_reverse = _dg_pairs(package.data, package)
     assert full_forward == full_reverse == set(package.positives["train"])
+
+
+def test_remove_dg_edges_keeps_edge_weight_aligned_with_edge_index() -> None:
+    from app.modeling.edge_weights import attach_associated_with_weights
+
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    weights = {
+        ("ORPHA:1", "HGNC:1"): 1.0,
+        ("ORPHA:2", "HGNC:2"): 0.8,
+        ("ORPHA:3", "HGNC:3"): 0.5,
+        ("ORPHA:4", "HGNC:4"): 0.2,
+    }
+    weighted_data = attach_associated_with_weights(package.data, package.node_indexes, weights)
+
+    pruned = remove_dg_edges(weighted_data, package.node_indexes, [("ORPHA:3", "HGNC:3")])
+
+    disease_ids = package.node_indexes["Disease"].ids
+    gene_ids = package.node_indexes["Gene"].ids
+    forward_index = pruned[DG_EDGE_TYPE].edge_index
+    forward_weight = pruned[DG_EDGE_TYPE].edge_weight
+    assert forward_weight.shape[0] == forward_index.shape[1]
+    for position in range(forward_index.shape[1]):
+        d, g = forward_index[:, position].tolist()
+        assert forward_weight[position].item() == pytest.approx(
+            weights[(disease_ids[d], gene_ids[g])]
+        )
+
+    reverse_index = pruned[DG_REVERSE_EDGE_TYPE].edge_index
+    reverse_weight = pruned[DG_REVERSE_EDGE_TYPE].edge_weight
+    assert reverse_weight.shape[0] == reverse_index.shape[1]
 
 
 def test_epoch_batch_supervision_pairs_are_absent_from_encoded_graph() -> None:
