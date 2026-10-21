@@ -187,9 +187,15 @@ def run_gnn_multi_seed(
     hidden_dim: int = 64,
     embedding_dim: int = 64,
     patience: int | None = 20,
+    use_edge_weights: bool = False,
     on_seed_done: SeedCallback | None = None,
 ) -> MultiSeedRun:
-    """Train+evaluate `GNNLinkPredictor` once per seed in `seeds`, same graph split."""
+    """Train+evaluate `GNNLinkPredictor` once per seed in `seeds`, same graph split.
+
+    `use_edge_weights` only takes effect if `package.data` already carries an
+    `edge_weight` (see `app/modeling/edge_weights.py`) -- this function does not
+    attach one itself.
+    """
 
     def train_fn(pkg: GraphPackage, seed: int) -> tuple[nn.Module, TrainingHistory]:
         return train_gnn(
@@ -201,6 +207,7 @@ def run_gnn_multi_seed(
             embedding_dim=embedding_dim,
             seed=seed,
             patience=patience,
+            use_edge_weights=use_edge_weights,
         )
 
     return _run_seeds(package, seeds, train_fn, gnn_score_pair, on_seed_done)
