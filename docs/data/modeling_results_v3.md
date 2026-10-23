@@ -63,7 +63,23 @@ uv run python scripts/train_dg_link_model.py \
 
 **중요한 비대칭 발견**: `combined`(gene+disease 평균)만 보면 GNN MRR 0.02 정도로 보이지만, **방향을 나눠보면 전혀 다른 그림입니다.** "유전자→질병" 방향(disease_corruption, 유전자가 주어졌을 때 질병 후보를 맞히는)은 MRR 0.03대로 baseline(0.0145)보다 확실히 낫습니다. 그런데 **"질병→유전자" 방향(gene_corruption — 임상적으로 더 중요한, 증상에서 원인 유전자를 찾는 방향)은 GNN MRR이 0.0012~0.0013으로 사실상 0에 가깝고, baseline(0.0099~0.0107)보다 오히려 더 나쁩니다.** test 셋에서는 Hits@1/10/50이 전부 0입니다.
 
-즉 지금까지 "GNN이 baseline보다 낫다"고 한 결론(결론 2, 아래)은 **disease_corruption 방향이 평균을 끌어올려서 생긴 착시일 수 있습니다.** 실제 쓰임새(증상/표현형 → 원인 유전자 추정)에 더 가까운 gene_corruption 방향만 보면 GNN이 더 나쁩니다. 이 비대칭의 원인은 아직 조사 전입니다 — gene 쪽 cold-start 비율이 높은 것(~40%)과 관련 있을 수도 있고, gene 후보 풀이 disease 후보 풀보다 훨씬 커서(유전자 ~4,500 vs 질병 ~6,000, 비슷하긴 하지만 rankable 비율이 다를 수 있음) 구조적으로 더 어려울 수도 있습니다. 다음 조사 과제로 남깁니다.
+즉 지금까지 "GNN이 baseline보다 낫다"고 한 결론(결론 2, 아래)은 **disease_corruption 방향이 평균을 끌어올려서 생긴 착시일 수 있습니다.** 실제 쓰임새(증상/표현형 → 원인 유전자 추정)에 더 가까운 gene_corruption 방향만 보면 GNN이 더 나쁩니다.
+
+### 원인 조사 결과: 구조적 degree 비대칭
+
+cold-start를 제외한 쌍만 비교한 건데도 이 비대칭이 나와서, "cold-start가 많아서"만으로는 설명이 안 됩니다. 대신 **메시지 패싱 그래프에서 Disease와 Gene이 받는 1-hop 신호량 자체가 크게 다릅니다**:
+
+| 노드 타입 | 받는 관계 | 평균 degree |
+|---|---|---:|
+| Disease | `rev_HAS_PHENOTYPE`(19.2) + `rev_ASSOCIATED_WITH`(1.1) | **20.3** |
+| Gene | `ASSOCIATED_WITH`뿐 | **1.5** |
+
+Gene은 오직 예측 대상인 바로 그 관계(Disease-Gene)로만 정보를 받는데, Disease는 그거 말고도 표현형 정보를 19배 더 많이 직접(1-hop) 받습니다. 저장된 체크포인트(`reports/models_v6_final/gnn_state_dict.pt`)로 직접 확인한 결과:
+
+- **임베딩 분화도**: Gene 임베딩끼리 평균 코사인 유사도 0.72(더 뭉쳐있음) vs Disease 0.66.
+- **점수 분산** (validation 쌍 1개로 전체 후보 대비 점수 분포 확인): gene 후보 점수 표준편차 0.32 vs disease 후보 1.15 — gene 쪽 점수가 훨씬 좁게 뭉쳐서 순위를 가르기 어렵습니다.
+
+**결론**: 버그가 아니라 그래프 자체의 정보 비대칭이 그대로 반영된 겁니다. 그리고 **고치는 방법이 이슈 [#19](https://github.com/fabxoe/raredx_ai/issues/19)(cold-start)와 정확히 같습니다** — Gene-HPO 엣지가 추가되면 Gene도 Disease처럼 1-hop 직접 정보를 받게 돼서, cold-start뿐 아니라 이 비대칭도 같이 해결될 가능성이 높습니다.
 
 **솔직한 평가**: baseline이 크게 좋아졌고(v2에서 "덜 학습됐다"는 지적이 맞았던 셈), GNN은 소폭 개선됐습니다. 다만 GNN의 Hits@50은 오히려 살짝 내려갔습니다. **단, 위 표는 전부 seed 42 한 번의 결과입니다 — 바로 아래 "Seed 분산 확인" 섹션을 보면 v2→v3의 이 소폭 차이들(bilinear→DistMult, hits@50 하락 등)은 seed 분산 안에 들어가 통계적으로 확정하기 어렵습니다.** 유일하게 seed에 안정적으로 재현되는 결론은 "GNN이 baseline보다 낫다"는 것입니다.
 
