@@ -24,7 +24,13 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import torch
 
-from app.modeling.evaluate import EvaluationReport, evaluate_link_prediction
+from app.modeling.evaluate import (
+    DEFAULT_CANDIDATE_POOL_SIZE,
+    CandidateSubsetMetrics,
+    EvaluationReport,
+    evaluate_candidate_subset_ranking,
+    evaluate_link_prediction,
+)
 from app.modeling.loader import GraphPackage, load_graph_package
 from app.modeling.models import BaselineScorer, GNNLinkPredictor
 from app.modeling.train import train_baseline, train_gnn
@@ -88,6 +94,10 @@ def _report_to_dict(report: EvaluationReport) -> dict:
     return dataclasses.asdict(report)
 
 
+def _candidate_subset_to_dict(metrics: CandidateSubsetMetrics) -> dict:
+    return dataclasses.asdict(metrics)
+
+
 def _check_no_clobber(paths: list[Path], *, overwrite: bool) -> None:
     if overwrite:
         return
@@ -134,6 +144,17 @@ def main(argv: list[str] | None = None) -> int:
         "--output", type=Path, default=Path("reports/dg_link_prediction_report.json")
     )
     parser.add_argument("--model-dir", type=Path, default=Path("reports/models"))
+    parser.add_argument(
+        "--candidate-pool-size",
+        type=int,
+        default=DEFAULT_CANDIDATE_POOL_SIZE,
+        help=(
+            "size of the disease-specific gene candidate pool used by the "
+            "candidate_subset report section (models ranking a small, "
+            "already-connected gene set per disease rather than the full "
+            "gene universe)"
+        ),
+    )
     parser.add_argument(
         "--overwrite",
         action="store_true",
@@ -194,6 +215,48 @@ def main(argv: list[str] | None = None) -> int:
                 evaluate_link_prediction(gnn_score_pair, package, "validation")
             ),
             "test": _report_to_dict(evaluate_link_prediction(gnn_score_pair, package, "test")),
+        },
+        "candidate_subset": {
+            "baseline": {
+                "validation": _candidate_subset_to_dict(
+                    evaluate_candidate_subset_ranking(
+                        baseline_score_pair,
+                        package,
+                        "validation",
+                        pool_size=args.candidate_pool_size,
+                        seed=args.seed,
+                    )
+                ),
+                "test": _candidate_subset_to_dict(
+                    evaluate_candidate_subset_ranking(
+                        baseline_score_pair,
+                        package,
+                        "test",
+                        pool_size=args.candidate_pool_size,
+                        seed=args.seed,
+                    )
+                ),
+            },
+            "gnn": {
+                "validation": _candidate_subset_to_dict(
+                    evaluate_candidate_subset_ranking(
+                        gnn_score_pair,
+                        package,
+                        "validation",
+                        pool_size=args.candidate_pool_size,
+                        seed=args.seed,
+                    )
+                ),
+                "test": _candidate_subset_to_dict(
+                    evaluate_candidate_subset_ranking(
+                        gnn_score_pair,
+                        package,
+                        "test",
+                        pool_size=args.candidate_pool_size,
+                        seed=args.seed,
+                    )
+                ),
+            },
         },
     }
 

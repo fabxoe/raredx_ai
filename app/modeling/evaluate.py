@@ -31,6 +31,7 @@ Protocol (see docs/superpowers/specs/2026-10-21-dg-link-prediction-modeling-desi
 from __future__ import annotations
 
 import math
+import random
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -43,6 +44,8 @@ ScorePairFn = Callable[[list[Pair]], list[float]]
 DISEASE_TYPE = "Disease"
 GENE_TYPE = "Gene"
 HITS_KS: tuple[int, ...] = (1, 10, 50)
+CANDIDATE_SUBSET_HITS_KS: tuple[int, ...] = (1, 3, 10)
+DEFAULT_CANDIDATE_POOL_SIZE = 10
 
 
 @dataclass
@@ -54,6 +57,24 @@ class RankingMetrics:
     hits_at_50: float
     mrr: float
     count: int
+
+
+@dataclass
+class CandidateSubsetMetrics:
+    """Gene-side ranking metrics within a small, disease-specific candidate pool.
+
+    Models the downstream service shape (symptoms -> disease candidates -> a
+    small set of candidate genes for that disease -> ranked, top-3 shown)
+    instead of ranking against the full rankable gene universe. See
+    ``evaluate_candidate_subset_ranking``.
+    """
+
+    hits_at_1: float
+    hits_at_3: float
+    hits_at_10: float
+    mrr: float
+    count: int
+    mean_known_candidates: float
 
 
 @dataclass
@@ -227,3 +248,95 @@ def evaluate_link_prediction(
         all_disease_corruption=_metrics_from_ranks(all_disease_ranks),
         all_combined=_metrics_from_ranks(all_gene_ranks + all_disease_ranks),
     )
+
+
+def _candidate_subset_metrics_from_ranks(
+    ranks: list[float], known_counts: list[int]
+) -> CandidateSubsetMetrics:
+    count = len(ranks)
+    if count == 0:
+        return CandidateSubsetMetrics(
+            hits_at_1=0.0, hits_at_3=0.0, hits_at_10=0.0, mrr=0.0, count=0,
+            mean_known_candidates=0.0,
+        )
+    hits = {k: sum(1 for rank in ranks if rank <= k) / count for k in CANDIDATE_SUBSET_HITS_KS}
+    mrr = sum(1.0 / rank for rank in ranks) / count
+    return CandidateSubsetMetrics(
+        hits_at_1=hits[1],
+        hits_at_3=hits[3],
+        hits_at_10=hits[10],
+        mrr=mrr,
+        count=count,
+        mean_known_candidates=sum(known_counts) / count,
+    )
+
+
+def evaluate_candidate_subset_ranking(
+    score_pair: ScorePairFn,
+    package: GraphPackage,
+    split: str,
+    *,
+    pool_size: int = DEFAULT_CANDIDATE_POOL_SIZE,
+    seed: int = 42,
+) -> CandidateSubsetMetrics:
+    """Rank the true gene within a small, disease-specific candidate pool.
+
+    For each positive pair of ``split``, builds a pool of up to ``pool_size``
+    genes (the true gene plus up to ``pool_size - 1`` others) instead of the
+    full rankable gene universe used by ``evaluate_link_prediction``:
+
+    1. Other genes already known (any split) to be associated with the same
+       disease -- real alternative candidates for a multi-gene disease.
+    2. If that is not enough to fill the pool, padded with a deterministic
+       random sample of other rankable genes (seeded by ``seed``).
+
+    Only the disease -> gene direction is evaluated: this models a service
+    that, for one already-identified disease candidate, ranks a handful of
+    candidate genes and shows the top few -- not full-universe link
+    discovery. ``mean_known_candidates`` reports the average number of
+    real (non-padded) alternative candidates per pair, since that mix
+    directly affects how meaningful the pool is.
+
+    Raises:
+        KeyError: if ``split`` is not a key of ``package.positives``.
+        ValueError: if ``pool_size`` is less than 1, or if ``score_pair``
+            returns the wrong number of scores or any non-finite score.
+    """
+    if pool_size < 1:
+        raise ValueError(f"pool_size must be >= 1, got {pool_size}")
+
+    eval_pairs = package.positives[split]
+
+    genes_by_disease: dict[str, set[str]] = defaultdict(set)
+    for split_pairs in package.positives.values():
+        for disease_id, gene_id in split_pairs:
+            genes_by_disease[disease_id].add(gene_id)
+
+    rankable_genes = sorted(package.node_indexes[GENE_TYPE].rankable)
+    rng = random.Random(seed)
+
+    ranks: list[float] = []
+    known_counts: list[int] = []
+
+    for disease_id, gene_id in eval_pairs:
+        true_pair = (disease_id, gene_id)
+        disease_genes = genes_by_disease[disease_id]
+
+        known = sorted(disease_genes - {gene_id})
+        pool = known[: pool_size - 1]
+        needed = (pool_size - 1) - len(pool)
+        if needed > 0:
+            exclude = disease_genes | {gene_id}
+            fill_universe = [g for g in rankable_genes if g not in exclude]
+            pool += rng.sample(fill_universe, min(needed, len(fill_universe)))
+
+        rank = _score_rank(
+            score_pair,
+            [true_pair] + [(disease_id, candidate) for candidate in pool],
+            "gene_corruption_subset",
+            true_pair,
+        )
+        ranks.append(rank)
+        known_counts.append(len(known))
+
+    return _candidate_subset_metrics_from_ranks(ranks, known_counts)

@@ -32,7 +32,7 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
     )
     assert exit_code == 0
     report = json.loads(output.read_text())
-    assert set(report) == {"training", "baseline", "gnn"}
+    assert set(report) == {"training", "baseline", "gnn", "candidate_subset"}
     assert set(report["training"]) == {"baseline", "gnn"}
     for model in ("baseline", "gnn"):
         training = report["training"][model]
@@ -52,6 +52,41 @@ def test_cli_writes_report_with_expected_keys(tmp_path: Path) -> None:
                 split_report["gene_corruption"]["count"]
                 + split_report["cold_start_gene_corruption"]["count"]
             )
+
+
+def test_cli_writes_candidate_subset_section(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    model_dir = tmp_path / "models"
+    exit_code = main(
+        [
+            "--graph-dir",
+            str(FIXTURE_DIR),
+            "--seed",
+            "42",
+            "--epochs",
+            "3",
+            "--candidate-pool-size",
+            "2",
+            "--output",
+            str(output),
+            "--model-dir",
+            str(model_dir),
+        ]
+    )
+    assert exit_code == 0
+    report = json.loads(output.read_text())
+    assert set(report["candidate_subset"]) == {"baseline", "gnn"}
+    for model in ("baseline", "gnn"):
+        for split in ("validation", "test"):
+            metrics = report["candidate_subset"][model][split]
+            assert set(metrics) == {
+                "hits_at_1",
+                "hits_at_3",
+                "hits_at_10",
+                "mrr",
+                "count",
+                "mean_known_candidates",
+            }
 
 
 def test_cli_creates_output_directory_if_missing(tmp_path: Path) -> None:

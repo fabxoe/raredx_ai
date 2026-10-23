@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from app.modeling.evaluate import (
+    CandidateSubsetMetrics,
     EvaluationReport,
     RankingMetrics,
+    evaluate_candidate_subset_ranking,
     evaluate_link_prediction,
 )
 from app.modeling.loader import (
@@ -403,3 +405,91 @@ def test_scorer_returning_nan_for_a_candidate_raises() -> None:
 
     with pytest.raises(ValueError, match="non-finite"):
         evaluate_link_prediction(nan_for_one_candidate_scorer, package, "validation")
+
+
+# --- candidate-subset ranking (small, disease-specific gene pool) ------------
+#
+# Fixture genes-by-disease (all splits): ORPHA:1 -> {HGNC:1, HGNC:5},
+# ORPHA:2 -> {HGNC:2, HGNC:3}, ORPHA:3 -> {HGNC:3}, ORPHA:4 -> {HGNC:4}.
+# Rankable genes: HGNC:1-4 (HGNC:5 is not rankable).
+
+
+def test_candidate_subset_pool_uses_other_known_genes_for_same_disease() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    scorer = RecordingScorer()
+    # validation pair (ORPHA:2, HGNC:3); ORPHA:2's only other known gene is
+    # HGNC:2, so with pool_size=2 the pool is exactly {HGNC:2}, no padding.
+    evaluate_candidate_subset_ranking(scorer, package, "validation", pool_size=2)
+    assert len(scorer.batches) == 1
+    assert sorted(scorer.batches[0]) == [("ORPHA:2", "HGNC:2"), ("ORPHA:2", "HGNC:3")]
+
+
+def test_candidate_subset_pads_with_rankable_genes_when_known_is_insufficient() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    scorer = RecordingScorer()
+    # test pair (ORPHA:1, HGNC:5); only other known gene is HGNC:1, so a
+    # pool_size=4 pool (3 candidates) needs 2 padded genes from {HGNC:2,3,4}.
+    evaluate_candidate_subset_ranking(scorer, package, "test", pool_size=4, seed=42)
+    batch = scorer.batches[0]
+    assert len(batch) == 4
+    assert ("ORPHA:1", "HGNC:5") in batch
+    assert ("ORPHA:1", "HGNC:1") in batch
+    padded = {gene for _, gene in batch} - {"HGNC:5", "HGNC:1"}
+    assert padded <= {"HGNC:2", "HGNC:3", "HGNC:4"}
+    assert len(padded) == 2
+
+
+def test_candidate_subset_padding_is_deterministic_for_fixed_seed() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    scorer_a, scorer_b = RecordingScorer(), RecordingScorer()
+    evaluate_candidate_subset_ranking(scorer_a, package, "test", pool_size=4, seed=7)
+    evaluate_candidate_subset_ranking(scorer_b, package, "test", pool_size=4, seed=7)
+    assert scorer_a.batches == scorer_b.batches
+
+
+def test_candidate_subset_perfect_scorer_ranks_true_gene_first() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    true_pairs = set(package.positives["validation"])
+
+    def perfect(pairs: list[Pair]) -> list[float]:
+        return [10.0 if pair in true_pairs else -10.0 for pair in pairs]
+
+    metrics = evaluate_candidate_subset_ranking(perfect, package, "validation")
+    assert metrics.hits_at_1 == 1.0
+    assert metrics.mrr == 1.0
+
+
+def test_candidate_subset_reports_mean_known_candidates() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    # validation has one pair (ORPHA:2, HGNC:3) with exactly one other known
+    # gene (HGNC:2) for ORPHA:2.
+    metrics = evaluate_candidate_subset_ranking(RecordingScorer(), package, "validation")
+    assert metrics.mean_known_candidates == 1.0
+
+
+def test_candidate_subset_rejects_non_positive_pool_size() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    with pytest.raises(ValueError):
+        evaluate_candidate_subset_ranking(RecordingScorer(), package, "validation", pool_size=0)
+
+
+def test_candidate_subset_empty_split_reports_zero_count() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    metrics = evaluate_candidate_subset_ranking(RecordingScorer(), package, "train", pool_size=1)
+    # pool_size=1 keeps only the true gene -> every pair ranks first trivially.
+    assert metrics.count == len(package.positives["train"])
+    assert metrics.hits_at_1 == 1.0
+
+    empty_package = load_graph_package(FIXTURE_DIR, seed=42)
+    empty_package.positives["validation"] = []
+    metrics = evaluate_candidate_subset_ranking(RecordingScorer(), empty_package, "validation")
+    assert metrics == CandidateSubsetMetrics(
+        hits_at_1=0.0, hits_at_3=0.0, hits_at_10=0.0, mrr=0.0, count=0,
+        mean_known_candidates=0.0,
+    )
+
+
+def test_candidate_subset_unknown_split_raises() -> None:
+    package = load_graph_package(FIXTURE_DIR, seed=42)
+    with pytest.raises(KeyError):
+        evaluate_candidate_subset_ranking(RecordingScorer(), package, "holdout")
