@@ -42,6 +42,29 @@ uv run python scripts/train_dg_link_model.py \
 
 **학습 길이**: baseline은 epoch 307에서 멈췄습니다(최적 epoch 287) — v2의 고정 150 epoch로는 수렴 전이었다는 뜻입니다. GNN은 epoch 97에서 멈췄습니다(최적 epoch 77).
 
+## 상세 분해: cold-start 포함 + 방향별(gene/disease) 분리
+
+위 표는 cold-start 쌍을 제외한 `combined` 지표만 보여줘서, 두 가지가 가려져 있었습니다. PR 리뷰 중 지적받아 추가합니다 ([PR #11 코멘트](https://github.com/fabxoe/raredx_ai/pull/11#issuecomment-6345334462)).
+
+| 모델 | Split | 집합 | 방향 | MRR | Hits@1 | Hits@10 | Hits@50 | n |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| baseline | validation | cold-start 제외 | gene (질병→유전자) | 0.0099 | 0.0019 | 0.0253 | 0.0663 | 513 |
+| baseline | validation | cold-start 제외 | disease (유전자→질병) | 0.0145 | 0.0029 | 0.0346 | 0.0938 | 693 |
+| baseline | validation | **전체(cold-start 포함)** | gene | 0.0064 | 0.0012 | 0.0156 | 0.0420 | 833 |
+| baseline | validation | **전체(cold-start 포함)** | disease | 0.0121 | 0.0024 | 0.0288 | 0.0780 | 833 |
+| **gnn** | validation | cold-start 제외 | **gene (질병→유전자)** | **0.0013** | 0.0000 | 0.0019 | 0.0039 | 513 |
+| **gnn** | validation | cold-start 제외 | disease (유전자→질병) | **0.0336** | 0.0159 | 0.0649 | 0.1385 | 693 |
+| gnn | validation | **전체(cold-start 포함)** | gene | 0.0039 | 0.0000 | 0.0072 | 0.0312 | 833 |
+| gnn | validation | **전체(cold-start 포함)** | disease | 0.0281 | 0.0132 | 0.0540 | 0.1152 | 833 |
+| **gnn** | test | cold-start 제외 | **gene (질병→유전자)** | **0.0012** | 0.0000 | 0.0000 | 0.0000 | 502 |
+| **gnn** | test | cold-start 제외 | disease (유전자→질병) | **0.0306** | 0.0102 | 0.0715 | 0.1460 | 685 |
+
+(전체 JSON은 Drive의 `dg_link_prediction_report_v6_final.json`에 `gene_corruption`/`disease_corruption`/`all_gene_corruption`/`all_disease_corruption` 키로 들어있습니다.)
+
+**중요한 비대칭 발견**: `combined`(gene+disease 평균)만 보면 GNN MRR 0.02 정도로 보이지만, **방향을 나눠보면 전혀 다른 그림입니다.** "유전자→질병" 방향(disease_corruption, 유전자가 주어졌을 때 질병 후보를 맞히는)은 MRR 0.03대로 baseline(0.0145)보다 확실히 낫습니다. 그런데 **"질병→유전자" 방향(gene_corruption — 임상적으로 더 중요한, 증상에서 원인 유전자를 찾는 방향)은 GNN MRR이 0.0012~0.0013으로 사실상 0에 가깝고, baseline(0.0099~0.0107)보다 오히려 더 나쁩니다.** test 셋에서는 Hits@1/10/50이 전부 0입니다.
+
+즉 지금까지 "GNN이 baseline보다 낫다"고 한 결론(결론 2, 아래)은 **disease_corruption 방향이 평균을 끌어올려서 생긴 착시일 수 있습니다.** 실제 쓰임새(증상/표현형 → 원인 유전자 추정)에 더 가까운 gene_corruption 방향만 보면 GNN이 더 나쁩니다. 이 비대칭의 원인은 아직 조사 전입니다 — gene 쪽 cold-start 비율이 높은 것(~40%)과 관련 있을 수도 있고, gene 후보 풀이 disease 후보 풀보다 훨씬 커서(유전자 ~4,500 vs 질병 ~6,000, 비슷하긴 하지만 rankable 비율이 다를 수 있음) 구조적으로 더 어려울 수도 있습니다. 다음 조사 과제로 남깁니다.
+
 **솔직한 평가**: baseline이 크게 좋아졌고(v2에서 "덜 학습됐다"는 지적이 맞았던 셈), GNN은 소폭 개선됐습니다. 다만 GNN의 Hits@50은 오히려 살짝 내려갔습니다. **단, 위 표는 전부 seed 42 한 번의 결과입니다 — 바로 아래 "Seed 분산 확인" 섹션을 보면 v2→v3의 이 소폭 차이들(bilinear→DistMult, hits@50 하락 등)은 seed 분산 안에 들어가 통계적으로 확정하기 어렵습니다.** 유일하게 seed에 안정적으로 재현되는 결론은 "GNN이 baseline보다 낫다"는 것입니다.
 
 ## Seed 분산 확인 (가장 중요한 섹션)
@@ -58,6 +81,8 @@ uv run python scripts/train_dg_link_model.py \
 **결론 1 — 지금까지의 미세 튜닝은 대부분 신뢰할 수 없습니다.** bilinear vs DistMult, dim 32 vs 64, weight_decay 값 사이의 MRR 차이(0.001~0.002 단위)는 이 seed 분산보다 작거나 비슷한 크기입니다. 즉 "DistMult+dim64 조합이 제일 좋다"는 단일 seed=42 결과만으로는 통계적으로 확정할 수 없고, seed 운이었을 가능성을 배제할 수 없습니다. 이후 비슷한 수준의 미세 튜닝은 권장하지 않습니다 — 효과를 보려면 애초에 multi-seed로 비교해야 합니다.
 
 **결론 2 — 그러나 "GNN이 baseline보다 낫다"는 신뢰할 수 있습니다.** 5개 seed 전부에서 GNN의 validation MRR이 baseline보다 높았습니다(baseline 0.0069~0.0160 vs GNN 0.0167~0.0219, 구간이 거의 안 겹침). 평균도 baseline 0.0110±0.0034, GNN 0.0191±0.0021로 명확히 분리됩니다. **이번 세션 전체에서 가장 과학적으로 신뢰할 수 있는 단일 결론은 "그래프 구조(메시지 패싱)가 실제로 예측에 도움이 된다"는 것**이며, 이는 seed 하나가 아니라 5개 seed에 걸쳐 일관되게 관찰됐습니다.
+
+**⚠️ 단서(아래 "상세 분해" 섹션 참고)**: 이 결론 2는 gene+disease 양방향 평균(`combined`) 기준입니다. 방향을 나눠보면 GNN이 나은 건 disease_corruption(유전자→질병) 방향뿐이고, **임상적으로 더 중요한 gene_corruption(질병→유전자) 방향에서는 GNN이 오히려 baseline보다 나쁩니다.** 이 seed 분산 분석은 gene/disease를 나눠서 다시 해봐야 "GNN이 낫다"는 결론이 방향별로도 유지되는지 확인할 수 있습니다 — 아직 안 했습니다.
 
 **실무 권장**: 앞으로 이 파이프라인으로 성능을 보고할 때는 seed 하나의 숫자 대신 최소 3~5 seed의 평균±표준편차를 리포트하세요. `load_graph_package`의 split seed(42, 고정)와 모델 seed(가변)는 구분해서 각각의 역할을 명확히 하는 게 좋습니다.
 
